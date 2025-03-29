@@ -1,2 +1,2 @@
 # peak
-A small e-bike display ment for VESC
+A small e-bike display meant for VESC
