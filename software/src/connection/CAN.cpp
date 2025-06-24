@@ -76,10 +76,6 @@ void CANTask(void *pvParameters)
 
             Serial.printf(">pas:%d\n", pas_state);
         }
-        else // If the error is not a timeout, print the error
-        {
-            Serial.println("CAN receive error: " + String(esp_err_to_name(err)));
-        }
 
         // Process the received message
         twai_message_t new_message;

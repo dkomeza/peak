@@ -4,6 +4,8 @@
 #include "connection/OTA.h"
 #include "screen/screen.h"
 #include "connection/CAN.h"
+#include "connection/BLE.h"
+#include "data/data.h"
 
 #include "screen/pages/debug.h"
 
@@ -20,10 +22,12 @@ void setup()
   if (crashRecovery)
     return;
 
+  data::init();
   CAN::setup();
+  BLE::setup();
 }
 
 void loop()
 {
-  vTaskDelay(100 / portTICK_PERIOD_MS); // Delay to prevent watchdog timeout
+  vTaskDelay(500 / portTICK_PERIOD_MS); // Delay to prevent watchdog timeout
 }
