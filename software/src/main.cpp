@@ -5,6 +5,7 @@
 #include "screen/screen.h"
 #include "connection/CAN.h"
 #include "connection/BLE.h"
+#include "connection/VESC.h"
 #include "data/data.h"
 
 #include "screen/pages/debug.h"
@@ -13,7 +14,7 @@
 
 void setup()
 {
-  Serial.begin(115200);
+  Serial.begin(921600);
 
   bool crashRecovery = bootCrashGuard();
 
@@ -23,6 +24,7 @@ void setup()
     return;
 
   data::init();
+  VESC::setup();
   CAN::setup();
   BLE::setup();
 }

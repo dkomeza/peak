@@ -8,7 +8,7 @@
 
 #include <TFT_eSPI.h>
 
-#include "defines.h"
+#include "datatypes.h"
 #include "screen.h"
 #include "pages/page.h"
 #include "pages/home.h"

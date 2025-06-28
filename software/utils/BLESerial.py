@@ -15,7 +15,7 @@ session = PromptSession()
 
 def notification_handler(sender, data):
     """Handles incoming data notifications from the BLE device."""
-    print(f"[ESP32] {data.decode(errors='ignore').strip()}")
+    print(f"{data.decode(errors='ignore')}", end="")
 
 async def send_loop(client: BleakClient):
     """Main loop to handle user input and send it to the BLE device."""
@@ -25,10 +25,6 @@ async def send_loop(client: BleakClient):
             if msg.lower() == "exit":
                 break
             
-            session.output.cursor_up(1)
-            session.output.cursor_backward(1000)
-            session.output.erase_end_of_line()
-            session.output.flush()
 
             if msg: # Only send if the message is not empty
                 await client.write_gatt_char(CHAR_RX_UUID, msg.encode())
