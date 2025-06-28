@@ -43,10 +43,6 @@ void CAN::setup()
 
     twai_timing_config_t t_config = TWAI_TIMING_CONFIG_250KBITS();
     twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL(); // Accept all messages by default
-    // twai_filter_config_t f_config = {
-    //     .acceptance_code = (PEAK_CAN_ID << 25), // Set the acceptance code to the desired CAN ID
-    //     .acceptance_mask = ~(PEAK_CAN_MASK << 25),
-    //     .single_filter = true};
 
     esp_err_t err = twai_driver_install(&g_config, &t_config, &f_config);
     if (err != ESP_OK)
@@ -77,39 +73,40 @@ void CAN::setup()
 void CANTask(void* pvParameters)
 {
     (void)pvParameters; // Unused parameter
+    twai_message_t message;
 
     for (;;)
     {
-        twai_message_t message;
-        esp_err_t err = twai_receive(&message, pdMS_TO_TICKS(1000)); // Wait for a message with a timeout of 100 ms
-        if (err == ESP_OK)
+        // Drain all available messages without delay
+        while (twai_receive(&message, 0) == ESP_OK)
         {
-            bool processed = false; // Flag to check if the message was processed
+            bool processed = false;
             for (int i = 0; i < MAX_CAN_CALLBACKS; i++)
             {
-                if (canCallbacks[i].id == (message.identifier & canCallbacks[i].mask)) // Check if the ID matches any registered callback
+                if ((message.identifier & canCallbacks[i].mask) == canCallbacks[i].id)
                 {
-                    if (canCallbacks[i].callback != nullptr) // Ensure the callback is not null
+                    if (canCallbacks[i].callback != nullptr)
                     {
-                        processed = true;                                                                     // Set processed to true if a callback is found
-                        canCallbacks[i].callback(message.identifier, message.data, message.data_length_code); // Call the registered callback
-                        break;                                                                                // Exit the loop after processing the message
+                        processed = true;
+                        canCallbacks[i].callback(message.identifier, message.data, message.data_length_code);
+                        break;
                     }
                 }
             }
 
-            if (!processed) // If no callback was found for the message
+            if (!processed)
             {
-                Serial.printf("Received CAN message with ID: 0x%X, Data Length: %d, Data: ", message.identifier, message.data_length_code);
+                Serial.printf("CAN ID: 0x%04X LEN: %d DATA:", message.identifier, message.data_length_code);
                 for (int i = 0; i < message.data_length_code; i++)
                 {
-                    Serial.printf("0x%02X ", message.data[i]);
+                    Serial.printf(" %02X", message.data[i]);
                 }
-                Serial.println("");
+                Serial.println();
             }
         }
 
-        vTaskDelay(1 / portTICK_PERIOD_MS); // Adjust delay as needed
+        // Short delay to yield CPU
+        vTaskDelay(1 / portTICK_PERIOD_MS);
     }
 
     vTaskDelete(NULL); // Delete the task when done

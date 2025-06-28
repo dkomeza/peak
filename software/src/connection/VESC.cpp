@@ -8,17 +8,17 @@
 
 #define CONTROLLER_ID 69
 #define VESC_TOOL_ID 254
-#define MAX_BUFFER_SIZE 512 // Same as the maximum size of the VESC RX buffer
 #define MAX_BUFFERS 3
 
-typedef void (*tx_func_t)(uint8_t* data, size_t len);
+#define MAX_PACKET_QUEUE 32
+
+QueueHandle_t VESC::packetQueue; // Queue to hold outgoing packets
+QueueHandle_t receiveQueue; // Queue to hold incoming packets
 
 uint8_t rxBuffer[MAX_BUFFERS][MAX_BUFFER_SIZE] = { 0 }; // Buffer for incoming data
 int rxBuffers[MAX_BUFFERS] = { 0 };                     // Array to hold indices of RX buffers
 
 PacketDecoder packetDecoder; // Packet decoder instance
-tx_func_t tx_func = nullptr;
-uint8_t packet[MAX_BUFFER_SIZE] = { 0 }; // Buffer for outgoing packets
 
 void packValue(uint8_t* data, int& offset, uint32_t value)
 {
@@ -41,7 +41,11 @@ void VESC::createPacket(const uint8_t* data, size_t length)
         : length + 4;
     packetLength += 3; // Add 3 for the end of the packet (CRC1, CRC2, and end byte)
 
-    memset(packet, 0, packetLength); // Clear the packet buffer
+    TxPacket txPacket;
+    txPacket.length = packetLength; // Set the length of the packet
+    memset(txPacket.data, 0, sizeof(txPacket.data)); // Clear the packet data buffer
+
+    uint8_t* packet = txPacket.data; // Pointer to the packet data buffer
 
     int s_ind = 0;
     if (length <= 255)
@@ -69,10 +73,7 @@ void VESC::createPacket(const uint8_t* data, size_t length)
     packValue(packet, s_ind, crc);            // Pack the CRC into the send buffer
     packet[s_ind++] = 0x03;                   // End byte to indicate the end of the packet
 
-    if (tx_func)
-    {
-        tx_func(packet, s_ind); // Call the transmission function with the packet
-    }
+    xQueueSend(packetQueue, &txPacket, 0); // Send the packet to the queue
 }
 
 bool sendPacket(uint32_t id, CAN_PACKET_ID packetId, const uint8_t* data, size_t length, bool extended = false)
@@ -85,24 +86,49 @@ bool sendPacket(uint32_t id, CAN_PACKET_ID packetId, const uint8_t* data, size_t
     return CAN::sendMessage(fullId, data, length, extended);
 }
 
-void VESC::setTxCallback(void (*send_func)(uint8_t* data, size_t len))
-{
-    if (send_func) {
-        tx_func = send_func;
-    }
-}
-
 void onPacketReceived(const uint8_t* data, size_t length)
 {
-    VESC::sendData(VESC_TOOL_ID, (uint8_t*)data, length);
+    VESC::TxPacket txPacket;
+    txPacket.length = length; // Set the length of the packet
+    memcpy(txPacket.data, data, length); // Copy the received data into the packet
+
+    xQueueSend(receiveQueue, &txPacket, 0); // Send the packet to the receive queue
 }
+
+void SendTask(void* pvParameters) {
+    (void)pvParameters; // Unused parameter
+
+    VESC::TxPacket txPacket;
+
+    while (true)
+    {
+        if (xQueueReceive(receiveQueue, &txPacket, portMAX_DELAY) == pdTRUE)
+        {
+            if (txPacket.length > 0)
+            {
+                VESC::sendData(VESC_TOOL_ID, txPacket.data, txPacket.length);
+            }
+        }
+        vTaskDelay(10 / portTICK_PERIOD_MS); // Delay to avoid busy waiting
+    }
+
+    vTaskDelete(NULL); // Delete the task when done
+}
+
 
 void VESC::setup()
 {
+    packetQueue = xQueueCreate(MAX_PACKET_QUEUE, sizeof(TxPacket)); // Create a queue for outgoing packets
+    receiveQueue = xQueueCreate(MAX_PACKET_QUEUE / 2, sizeof(TxPacket)); // Create a queue for incoming packets
+
     packetDecoder.onPacket(onPacketReceived); // Register the packet handler
 
     CAN::registerCallback(VESC_TOOL_ID, 0xFF, VESC::receiveData);
+
+    xTaskCreatePinnedToCore(
+        SendTask, "SendTask", 4096, NULL, 2, NULL, IO_CORE); // Create the task for sending packets
 }
+
 
 void VESC::handleIncomingData(uint8_t data)
 {
@@ -113,13 +139,6 @@ void VESC::sendData(uint32_t id, uint8_t* data, uint16_t length)
 {
     if (length < 1)
         return; // Return false if data length is too short
-
-    // Serial.printf("[ESP=>VESC] ");
-    // for (int i = 0; i < length; i++)
-    // {
-    //     Serial.printf("%02X ", data[i]); // Print each byte of the data
-    // }
-    // Serial.println(""); // New line after printing the data
 
     uint8_t send_buffer[8] = { 0 };
 
@@ -179,12 +198,6 @@ void VESC::sendData(uint32_t id, uint8_t* data, uint16_t length)
 void VESC::receiveData(uint32_t id, const uint8_t* source, size_t length)
 {
     CAN_PACKET_ID cmd = static_cast<CAN_PACKET_ID>(id >> 8); // Extract the command from the ID
-    // Serial.printf("[VESC=>ESP] ");
-    // for (size_t i = 0; i < length; i++)
-    // {
-    //     Serial.printf("%02X ", source[i]); // Print each byte of the received data
-    // }
-    // Serial.println(""); // New line after printing the data
 
     switch (cmd)
     {
@@ -272,6 +285,7 @@ void VESC::receiveData(uint32_t id, const uint8_t* source, size_t length)
 
         if (buf_ind < 0)
         {
+            Serial.println("No matching RX buffer found, clearing all buffers"); // Debug message if no matching buffer is found
             // Clear all RX buffers if no matching buffer is found
             for (int i = 0; i < MAX_BUFFERS; i++)
             {
@@ -285,6 +299,8 @@ void VESC::receiveData(uint32_t id, const uint8_t* source, size_t length)
         {
             memset(rxBuffer[buf_ind], 0, MAX_BUFFER_SIZE); // Clear the RX buffer if CRC does not match
             rxBuffers[buf_ind] = 0;                        // Reset the RX buffer index
+
+            Serial.println("CRC mismatch, clearing buffer"); // Debug message for CRC mismatch
             break;
         }
 

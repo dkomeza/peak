@@ -12,25 +12,11 @@ int updateInterval = 200;
 WiFiServer server(TCP_PORT);
 WiFiClient client;
 
-void sendCallback(uint8_t* data, size_t len)
-{
-    // Serial.printf("[ESP=>TCP] ");
-    // for (size_t i = 0; i < len; i++)
-    // {
-    //     Serial.printf("0x%02X ", data[i]); // Print each byte of the data
-    // }
-    // Serial.println(""); // New line after printing the data
-    if (len > 0 && client && client.connected())
-    {
-        client.write(data, len); // Send data to the connected client
-    }
-}
-
 void TCPServerTask(void* pvParameters)
 {
     (void)pvParameters; // Unused parameter
 
-    VESC::setTxCallback(sendCallback);
+    VESC::TxPacket txPacket;
 
     while (true)
     {
@@ -46,14 +32,22 @@ void TCPServerTask(void* pvParameters)
                     hasData = true;
                 }
                 if (hasData) {
-                    // Serial.printf("[TCP=>ESP] ");
                     while (client.available()) {
                         uint8_t data = client.read();
-                        // Serial.printf("0x%02X ", data); // Print each byte of the data
+                        // Serial.printf("%02X ", data); // Print each byte of the data
                         VESC::handleIncomingData(data); // Process incoming data
                     }
-                    // Serial.println(""); // New line after printing the data
                 }
+
+                while (xQueueReceive(VESC::packetQueue, &txPacket, 0) == pdTRUE)
+                {
+                    if (txPacket.length > 0)
+                    {
+                        client.write(txPacket.data, txPacket.length); // Send the packet to the client
+                    }
+                    delay(1);
+                }
+
                 vTaskDelay(10 / portTICK_PERIOD_MS);
             }
             client.stop();
@@ -83,6 +77,7 @@ namespace OTA
 
         ArduinoOTA.begin();
         server.begin();
+        server.setNoDelay(true);
 
         xTaskCreatePinnedToCore(
             updateTask,      // Task function
@@ -92,12 +87,13 @@ namespace OTA
             1,               // Priority
             NULL,            // Task handle
             IO_CORE);        // Core ID
+
         xTaskCreatePinnedToCore(
             TCPServerTask,   // Task function
             "TCPServerTask", // Name
             8192,            // Stack size
             NULL,            // Parameters
-            1,               // Priority
+            2,               // Priority
             NULL,            // Task handle
             IO_CORE);        // Core ID
 
