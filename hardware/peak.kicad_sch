@@ -2996,6 +2996,46 @@
 				(justify left top)
 			)
 		)
+		(pin "EN_DCDC" input
+			(at 229.87 40.64 180)
+			(uuid "2b2c8049-f198-4e01-8996-225725231eea")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "LED_A" input
+			(at 229.87 46.99 180)
+			(uuid "b4d185ed-e146-4c8e-85a3-776458e7397a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "LED_K" output
+			(at 229.87 49.53 180)
+			(uuid "e948837f-a105-4f5d-a078-7cdaea74e8ae")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "LED_PWM" input
+			(at 229.87 52.07 180)
+			(uuid "df4b7979-3bb6-4724-9b42-5fb1d7f4516d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(instances
 			(project "peak"
 				(path "/54a54a18-4a65-4728-b17a-32b4a97370c1"

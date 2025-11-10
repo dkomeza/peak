@@ -2158,6 +2158,12 @@
 		(uuid "d4f6d999-91e7-4b4f-b139-9b42c3c26f1a")
 	)
 	(junction
+		(at 186.69 123.19)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "debb1799-33f1-45d0-b11e-a92aef237f43")
+	)
+	(junction
 		(at 208.28 27.94)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3355,6 +3361,16 @@
 	)
 	(wire
 		(pts
+			(xy 186.69 130.81) (xy 199.39 130.81)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "cd50fdc9-0eca-42a4-930c-298119644409")
+	)
+	(wire
+		(pts
 			(xy 110.49 62.23) (xy 110.49 63.5)
 		)
 		(stroke
@@ -3445,7 +3461,7 @@
 	)
 	(wire
 		(pts
-			(xy 186.69 123.19) (xy 189.23 123.19)
+			(xy 184.15 123.19) (xy 186.69 123.19)
 		)
 		(stroke
 			(width 0)
@@ -3595,6 +3611,16 @@
 	)
 	(wire
 		(pts
+			(xy 186.69 123.19) (xy 189.23 123.19)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "fcf8139b-62f2-4d7f-8987-98ee16981807")
+	)
+	(wire
+		(pts
 			(xy 224.79 118.11) (xy 228.6 118.11)
 		)
 		(stroke
@@ -3625,7 +3651,7 @@
 	)
 	(hierarchical_label "LED_PWM"
 		(shape input)
-		(at 186.69 123.19 180)
+		(at 184.15 123.19 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7172,6 +7198,76 @@
 			(project ""
 				(path "/54a54a18-4a65-4728-b17a-32b4a97370c1/2f3b67c0-998d-4e44-aea4-3f3ad43237a6"
 					(reference "L2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 186.69 127 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "fe3910c1-f2e0-4fa0-9cdd-3b02c75bc490")
+		(property "Reference" "R12"
+			(at 189.23 125.7299 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100k"
+			(at 189.23 128.2699 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 184.912 127 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 186.69 127 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 186.69 127 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "70b3d4ca-64c4-4b65-ade5-e31204141724")
+		)
+		(pin "2"
+			(uuid "95f1aba4-c5d6-4cd3-b929-1a6e1900e985")
+		)
+		(instances
+			(project "peak"
+				(path "/54a54a18-4a65-4728-b17a-32b4a97370c1/2f3b67c0-998d-4e44-aea4-3f3ad43237a6"
+					(reference "R12")
 					(unit 1)
 				)
 			)
