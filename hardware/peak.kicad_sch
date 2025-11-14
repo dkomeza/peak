@@ -480,6 +480,66 @@
 				(justify left top)
 			)
 		)
+		(pin "SDIO_CMD" input
+			(at 125.73 109.22 180)
+			(uuid "62651f4a-362f-4afd-a124-e5a7a181d1b1")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "SDIO_DATA3" input
+			(at 125.73 111.76 180)
+			(uuid "ffdf3443-2178-41f0-9978-6c2df27de58f")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "SDIO_DATA2" input
+			(at 125.73 114.3 180)
+			(uuid "33245f67-7d0a-49b5-9f6d-39c93aef9a7d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "SDIO_CLK" input
+			(at 125.73 116.84 180)
+			(uuid "bd1d29c9-ba9c-489d-9a59-34d04a65f678")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "SDIO_DATA1" input
+			(at 125.73 119.38 180)
+			(uuid "f41f92cf-13c1-4859-bc59-2981ddba1e61")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "SDIO_DATA0" input
+			(at 125.73 121.92 180)
+			(uuid "fe2ed1fa-a71b-4118-b572-a8afbd95f255")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(instances
 			(project "peak"
 				(path "/54a54a18-4a65-4728-b17a-32b4a97370c1"
