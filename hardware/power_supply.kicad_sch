@@ -2548,22 +2548,10 @@
 		(uuid "644d8397-7148-403d-b949-01d51042d85b")
 	)
 	(junction
-		(at 50.8 43.18)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "6c46ae69-bcbf-482d-b6fe-38ac13a3cc09")
-	)
-	(junction
 		(at 54.61 43.18)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "73553a1d-0778-402b-bd1a-1e16fd1bd66a")
-	)
-	(junction
-		(at 43.18 54.61)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "78d3f21d-9c57-47cd-b18f-cff582b9c87a")
 	)
 	(junction
 		(at 36.83 54.61)
@@ -2672,12 +2660,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "ee7c1fcd-7f21-4531-be53-a407e27ffdaf")
-	)
-	(junction
-		(at 40.64 90.17)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "eed539ee-5f19-45c5-b4f9-2c68548a2f5f")
 	)
 	(junction
 		(at 127 44.45)
@@ -3049,16 +3031,6 @@
 	)
 	(wire
 		(pts
-			(xy 50.8 52.07) (xy 50.8 54.61)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "4cdedeeb-a17c-49e9-a9f9-3cac44433b0b")
-	)
-	(wire
-		(pts
 			(xy 177.8 69.85) (xy 189.23 69.85)
 		)
 		(stroke
@@ -3249,16 +3221,6 @@
 	)
 	(wire
 		(pts
-			(xy 50.8 54.61) (xy 43.18 54.61)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "683dd0c6-fdc1-40c8-a1cd-ed3d2aacb538")
-	)
-	(wire
-		(pts
 			(xy 228.6 106.68) (xy 228.6 105.41)
 		)
 		(stroke
@@ -3369,7 +3331,7 @@
 	)
 	(wire
 		(pts
-			(xy 40.64 90.17) (xy 41.91 90.17)
+			(xy 38.1 90.17) (xy 41.91 90.17)
 		)
 		(stroke
 			(width 0)
@@ -3486,16 +3448,6 @@
 			(type default)
 		)
 		(uuid "8cf70350-76ef-4b01-a0b4-7a32efa9ce22")
-	)
-	(wire
-		(pts
-			(xy 38.1 90.17) (xy 40.64 90.17)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "9011648a-78ce-4015-97ad-ff8fa7fcdc44")
 	)
 	(wire
 		(pts
@@ -3626,16 +3578,6 @@
 			(type default)
 		)
 		(uuid "a89f9802-5328-4d48-b02d-d57a5deab64b")
-	)
-	(wire
-		(pts
-			(xy 50.8 44.45) (xy 50.8 43.18)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "aa1e3271-5266-41ea-81f8-f361a80d9066")
 	)
 	(wire
 		(pts
@@ -3849,7 +3791,7 @@
 	)
 	(wire
 		(pts
-			(xy 43.18 43.18) (xy 50.8 43.18)
+			(xy 43.18 43.18) (xy 54.61 43.18)
 		)
 		(stroke
 			(width 0)
@@ -4119,16 +4061,6 @@
 	)
 	(wire
 		(pts
-			(xy 50.8 43.18) (xy 54.61 43.18)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "f72ccb1e-36e9-44ae-8c8e-688a34de1cd9")
-	)
-	(wire
-		(pts
 			(xy 40.64 54.61) (xy 43.18 54.61)
 		)
 		(stroke
@@ -4206,7 +4138,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "TestPoint:TestPoint_Loop_D2.50mm_Drill1.0mm"
+		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
 			(at 240.03 27.94 0)
 			(effects
 				(font
@@ -4625,7 +4557,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "22uF/16V"
+		(property "Value" "22uF"
 			(at 232.918 80.01 0)
 			(effects
 				(font
@@ -4635,7 +4567,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 233.3752 81.28 0)
 			(effects
 				(font
@@ -4705,7 +4637,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_1206_3216Metric"
 			(at 37.7952 52.07 0)
 			(effects
 				(font
@@ -4844,7 +4776,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10uF/16V"
+		(property "Value" "10uF"
 			(at 161.544 78.74 0)
 			(effects
 				(font
@@ -4853,7 +4785,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 172.4152 80.01 0)
 			(effects
 				(font
@@ -4990,7 +4922,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "4.7nF/16V"
+		(property "Value" "4.7nF"
 			(at 180.086 88.392 90)
 			(effects
 				(font
@@ -5000,7 +4932,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 178.7652 80.01 0)
 			(effects
 				(font
@@ -5068,7 +5000,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Inductor_SMD:L_0603_1608Metric"
 			(at 213.36 69.85 0)
 			(effects
 				(font
@@ -5172,72 +5104,6 @@
 			(project ""
 				(path "/54a54a18-4a65-4728-b17a-32b4a97370c1/2f3b67c0-998d-4e44-aea4-3f3ad43237a6"
 					(reference "#PWR010")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 40.64 90.17 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp yes)
-		(uuid "1e31c2b7-15b6-4f5a-b4ea-026989fff162")
-		(property "Reference" "TP9"
-			(at 41.656 85.344 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "5V"
-			(at 41.656 87.122 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Footprint" "TestPoint:TestPoint_Loop_D2.50mm_Drill1.0mm"
-			(at 45.72 90.17 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 45.72 90.17 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "test point"
-			(at 40.64 90.17 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "885f1e9e-c770-42bb-8feb-1c2b0f31a682")
-		)
-		(instances
-			(project "peak"
-				(path "/54a54a18-4a65-4728-b17a-32b4a97370c1/2f3b67c0-998d-4e44-aea4-3f3ad43237a6"
-					(reference "TP9")
 					(unit 1)
 				)
 			)
@@ -5501,7 +5367,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 192.7352 115.57 0)
 			(effects
 				(font
@@ -5571,7 +5437,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 108.712 48.26 90)
 			(effects
 				(font
@@ -5647,7 +5513,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_1206_3216Metric"
 			(at 31.4452 52.07 0)
 			(effects
 				(font
@@ -5713,7 +5579,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "C"
+		(property "Value" "22uF"
 			(at 125.73 53.3399 0)
 			(effects
 				(font
@@ -5723,7 +5589,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 122.8852 55.88 0)
 			(effects
 				(font
@@ -5789,7 +5655,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "22uF/10V"
+		(property "Value" "22uF"
 			(at 132.588 54.356 0)
 			(effects
 				(font
@@ -5798,7 +5664,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 133.0452 55.88 0)
 			(effects
 				(font
@@ -5873,7 +5739,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "TestPoint:TestPoint_Loop_D2.50mm_Drill1.0mm"
+		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
 			(at 199.39 106.68 0)
 			(effects
 				(font
@@ -5938,7 +5804,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Inductor_SMD:L_Bourns_SRP5030T"
 			(at 100.33 48.26 0)
 			(effects
 				(font
@@ -6004,7 +5870,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "22uF/16V"
+		(property "Value" "22uF"
 			(at 231.648 35.56 0)
 			(effects
 				(font
@@ -6013,7 +5879,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 232.1052 36.83 0)
 			(effects
 				(font
@@ -6079,7 +5945,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "22uF/16V"
+		(property "Value" "22uF"
 			(at 226.568 35.56 0)
 			(effects
 				(font
@@ -6089,7 +5955,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 227.0252 36.83 0)
 			(effects
 				(font
@@ -6231,7 +6097,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 169.8752 115.57 0)
 			(effects
 				(font
@@ -6368,7 +6234,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 108.712 58.42 90)
 			(effects
 				(font
@@ -6646,7 +6512,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "22uF/10V"
+		(property "Value" "22uF"
 			(at 127.508 54.356 0)
 			(effects
 				(font
@@ -6656,7 +6522,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 127.9652 55.88 0)
 			(effects
 				(font
@@ -6730,7 +6596,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Inductor_SMD:L_0805_2012Metric"
 			(at 237.49 107.188 90)
 			(effects
 				(font
@@ -6798,7 +6664,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 34.29 91.948 90)
 			(effects
 				(font
@@ -7013,7 +6879,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "TestPoint:TestPoint_Loop_D2.50mm_Drill1.0mm"
+		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
 			(at 121.92 44.45 0)
 			(effects
 				(font
@@ -7078,7 +6944,7 @@
 				)
 			)
 		)
-		(property "Footprint" "DDC0006A-MFG"
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-23-6"
 			(at 58.42 43.18 0)
 			(effects
 				(font
@@ -7234,7 +7100,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 221.742 73.66 90)
 			(effects
 				(font
@@ -7367,7 +7233,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "22uF/16V"
+		(property "Value" "22uF"
 			(at 237.998 80.01 0)
 			(effects
 				(font
@@ -7376,7 +7242,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 238.4552 81.28 0)
 			(effects
 				(font
@@ -7445,7 +7311,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 246.0752 114.3 0)
 			(effects
 				(font
@@ -7660,7 +7526,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "TestPoint:TestPoint_Loop_D2.50mm_Drill1.0mm"
+		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
 			(at 256.54 105.41 0)
 			(effects
 				(font
@@ -7700,81 +7566,6 @@
 		)
 	)
 	(symbol
-		(lib_id "Device:C")
-		(at 50.8 48.26 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "d5bfa001-fe65-47d9-9c7a-1c6f73982472")
-		(property "Reference" "C10"
-			(at 51.054 46.228 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "100nF/100V"
-			(at 50.8 50.8 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Footprint" ""
-			(at 51.7652 52.07 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 50.8 48.26 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Unpolarized capacitor"
-			(at 50.8 48.26 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "cb1e2314-c376-4a33-af68-7d26fc58667e")
-		)
-		(pin "2"
-			(uuid "5ea800d9-98b7-4683-b91b-17b416713def")
-		)
-		(instances
-			(project "power_supply"
-				(path "/0fe1afe9-d433-41e6-81ab-12b2d525d429"
-					(reference "C?")
-					(unit 1)
-				)
-			)
-			(project "peak"
-				(path "/54a54a18-4a65-4728-b17a-32b4a97370c1/2f3b67c0-998d-4e44-aea4-3f3ad43237a6"
-					(reference "C10")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Device:R")
 		(at 223.52 81.28 0)
 		(unit 1)
@@ -7801,7 +7592,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 221.742 81.28 90)
 			(effects
 				(font
@@ -7870,7 +7661,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 209.2452 36.83 0)
 			(effects
 				(font
@@ -8012,7 +7803,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 229.5652 114.3 0)
 			(effects
 				(font
@@ -8081,7 +7872,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_1206_3216Metric"
 			(at 44.1452 52.07 0)
 			(effects
 				(font
@@ -8147,7 +7938,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10uF/16V"
+		(property "Value" "10uF"
 			(at 173.228 43.18 0)
 			(effects
 				(font
@@ -8156,7 +7947,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 173.6852 44.45 0)
 			(effects
 				(font
@@ -8230,7 +8021,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Inductor_SMD:L_APV_ANR4030"
 			(at 217.17 27.94 0)
 			(effects
 				(font
@@ -8305,7 +8096,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "TestPoint:TestPoint_Loop_D2.50mm_Drill1.0mm"
+		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
 			(at 243.84 69.85 0)
 			(effects
 				(font
@@ -8371,7 +8162,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 94.9452 43.18 0)
 			(effects
 				(font

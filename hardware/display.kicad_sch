@@ -2253,7 +2253,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 233.3752 82.55 0)
 			(effects
 				(font
@@ -2312,7 +2312,7 @@
 				)
 			)
 		)
-		(property "Value" "4.7uF/16V"
+		(property "Value" "4.7uF"
 			(at 193.04 59.69 90)
 			(effects
 				(font
@@ -2320,7 +2320,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 203.2 59.9948 0)
 			(effects
 				(font
@@ -2389,7 +2389,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "TestPoint:TestPoint_Loop_D2.50mm_Drill1.0mm"
+		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
 			(at 234.95 72.39 0)
 			(effects
 				(font
@@ -3195,7 +3195,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 219.202 80.01 90)
 			(effects
 				(font
@@ -3262,7 +3262,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Inductor_SMD:L_1210_3225Metric"
 			(at 199.39 66.04 0)
 			(effects
 				(font
@@ -3332,7 +3332,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 192.532 81.28 90)
 			(effects
 				(font

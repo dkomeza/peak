@@ -2120,6 +2120,131 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "power:+BATT"
+			(power)
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "#PWR"
+				(at 0 -3.81 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Value" "+BATT"
+				(at 0 3.556 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "Power symbol creates a global label with name \"+BATT\""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_keywords" "global power battery"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "+BATT_0_1"
+				(polyline
+					(pts
+						(xy -0.762 1.27) (xy 0 2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 2.54) (xy 0.762 1.27)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 0) (xy 0 2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "+BATT_1_1"
+				(pin power_in line
+					(at 0 0 90)
+					(length 0)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "power:GND"
 			(power)
 			(pin_numbers
@@ -2939,7 +3064,7 @@
 	)
 	(wire
 		(pts
-			(xy 127 46.99) (xy 127 66.04)
+			(xy 127 49.53) (xy 127 66.04)
 		)
 		(stroke
 			(width 0)
@@ -3466,6 +3591,16 @@
 			(type default)
 		)
 		(uuid "eac295b3-4faa-45a3-8f14-ba59b9398edf")
+	)
+	(wire
+		(pts
+			(xy 127 41.91) (xy 127 39.37)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ed2b2377-0db2-4800-86cf-c2f755cc136f")
 	)
 	(wire
 		(pts
@@ -4073,7 +4208,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 98.552 90.17 90)
 			(effects
 				(font
@@ -4213,7 +4348,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "PCM_Resistor_SMD_AKL:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 62.992 30.48 90)
 			(effects
 				(font
@@ -4288,7 +4423,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 118.872 45.72 90)
 			(effects
 				(font
@@ -4356,7 +4491,7 @@
 				)
 			)
 		)
-		(property "Footprint" "LTR-329ALS-01_LTO"
+		(property "Footprint" "PEAK:LTR-329ALS-01_LTO"
 			(at 218.44 59.69 0)
 			(effects
 				(font
@@ -4501,7 +4636,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 94.9452 105.41 0)
 			(effects
 				(font
@@ -4763,78 +4898,6 @@
 		)
 	)
 	(symbol
-		(lib_id "power:VBUS")
-		(at 135.89 26.67 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "4237bd95-157f-4d65-985a-5d8323d8ef2f")
-		(property "Reference" "#PWR029"
-			(at 135.89 30.48 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "VBUS"
-			(at 135.89 21.59 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 135.89 26.67 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 135.89 26.67 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Power symbol creates a global label with name \"VBUS\""
-			(at 135.89 26.67 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "6493b256-5601-4f73-a912-2293606a0a72")
-		)
-		(instances
-			(project "peak"
-				(path "/54a54a18-4a65-4728-b17a-32b4a97370c1/0c93e6bb-f116-4211-a7bb-466a518707dd"
-					(reference "#PWR029")
-					(unit 1)
-				)
-			)
-			(project ""
-				(path "/bd2db347-40f3-4f25-9f46-975f5972e5df"
-					(reference "#PWR01")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Device:C")
 		(at 213.36 31.75 0)
 		(mirror y)
@@ -5004,7 +5067,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 125.222 33.02 90)
 			(effects
 				(font
@@ -5704,7 +5767,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 127 43.18 0)
+		(at 127 45.72 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -5712,7 +5775,7 @@
 		(dnp no)
 		(uuid "7bd7d66d-f224-4bdd-98bb-61e4ad7c9a5c")
 		(property "Reference" "C11"
-			(at 127.254 45.212 0)
+			(at 127.254 47.752 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5721,7 +5784,7 @@
 			)
 		)
 		(property "Value" "100nF/100V"
-			(at 127.508 45.72 0)
+			(at 127.508 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5730,8 +5793,8 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" ""
-			(at 127.9652 46.99 0)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 127.9652 49.53 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5740,7 +5803,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 127 43.18 0)
+			(at 127 45.72 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5749,7 +5812,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
-			(at 127 43.18 0)
+			(at 127 45.72 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6035,7 +6098,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "PCM_Resistor_SMD_AKL:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 42.672 30.48 90)
 			(effects
 				(font
@@ -6157,6 +6220,72 @@
 			(project ""
 				(path "/bd2db347-40f3-4f25-9f46-975f5972e5df"
 					(reference "Q1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+BATT")
+		(at 135.89 26.67 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "a2e6e070-4187-4bf4-a50e-835cfe3b8070")
+		(property "Reference" "#PWR044"
+			(at 135.89 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+BATT"
+			(at 135.89 21.59 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 135.89 26.67 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 135.89 26.67 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+BATT\""
+			(at 135.89 26.67 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "a7eddf77-c5c5-4fa2-83df-c96ca520a303")
+		)
+		(instances
+			(project ""
+				(path "/54a54a18-4a65-4728-b17a-32b4a97370c1/0c93e6bb-f116-4211-a7bb-466a518707dd"
+					(reference "#PWR044")
 					(unit 1)
 				)
 			)
@@ -6820,7 +6949,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 106.68 98.298 90)
 			(effects
 				(font
@@ -6889,7 +7018,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "PCM_Resistor_SMD_AKL:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 21.082 30.48 90)
 			(effects
 				(font
@@ -7040,7 +7169,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 109.982 60.96 90)
 			(effects
 				(font
@@ -7253,7 +7382,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 106.68 57.658 90)
 			(effects
 				(font
@@ -7322,7 +7451,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 98.552 101.6 90)
 			(effects
 				(font
