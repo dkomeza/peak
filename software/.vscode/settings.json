@@ -1,17 +1,21 @@
 {
-    "files.associations": {
-        "new": "cpp",
-        "atomic": "cpp",
-        "string_view": "cpp",
-        "optional": "cpp",
-        "istream": "cpp",
-        "ostream": "cpp",
-        "system_error": "cpp",
-        "array": "cpp",
-        "functional": "cpp",
-        "tuple": "cpp",
-        "type_traits": "cpp",
-        "utility": "cpp",
-        "crc.h": "c"
-    }
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.espIdfPath": "/Users/dkomeza/esp/v5.5.1/esp-idf",
+  "idf.pythonInstallPath": "/Users/dkomeza/.pyenv/shims/python",
+  "idf.openOcdConfigs": [
+    "board/esp32p4-builtin.cfg"
+  ],
+  "idf.port": "/dev/tty.usbmodem21101",
+  "idf.toolsPath": "/Users/dkomeza/.espressif",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32p4"
+  },
+  "clangd.path": "/Users/dkomeza/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin/clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=/Users/dkomeza/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc",
+    "--compile-commands-dir=${workspaceFolder}/build"
+  ],
+  "idf.flashType": "JTAG",
+  "idf.currentSetup": "/Users/dkomeza/esp/v5.5.1/esp-idf"
 }

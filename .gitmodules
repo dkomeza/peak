@@ -1,3 +1,6 @@
 [submodule "software/lib/TFT_eSPI"]
 	path = software/lib/TFT_eSPI
 	url = https://github.com/Bodmer/TFT_eSPI.git
+[submodule "software/esp-hosted-mcu"]
+	path = software/esp-hosted-mcu
+	url = https://github.com/espressif/esp-hosted-mcu
