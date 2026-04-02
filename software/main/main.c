@@ -4,6 +4,7 @@
 
 #include "driver/i2c_master.h"
 #include "ltr329.h"
+#include "t117.h"
 
 static const char *TAG = "PEAK";
 
@@ -22,10 +23,14 @@ void app_main(void) {
   i2c_master_init(&bus_handle);
 
   ltr329_sensor_init(&bus_handle);
+  t117_sensor_init(&bus_handle);
 
   while (1) {
     float lux = ltr329_read_lux();
+    float temp = t117_read_temperature();
     printf("Ambient Light: %.2f lux\n", lux);
+    printf("Temperature: %.2f °C\n", temp);
+    printf("-----------------------------\n");
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
