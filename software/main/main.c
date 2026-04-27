@@ -1,8 +1,13 @@
-#include "button.h"
+#include "display/lv_display.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <esp_event.h>
+#include <esp_timer.h>
+#include <esp_wifi.h>
+#include <nvs_flash.h>
 
+#include "boot/boot.h"
 #include "buttons.h"
 #include "driver/i2c_master.h"
 #include "ltr329.h"
@@ -25,24 +30,17 @@ void button_power_pressed(void) { printf("POWER button pressed!\n"); }
 void button_down_pressed(void) { printf("DOWN button pressed!\n"); }
 
 void app_main(void) {
+  buttons_init();
+
+  boot_mode_t mode = boot();
+
   i2c_master_bus_handle_t bus_handle;
   i2c_master_init(&bus_handle);
 
   ltr329_sensor_init(&bus_handle);
   t117_sensor_init(&bus_handle);
 
-  buttons_init();
-
-  button_on(BTN_UP, BTN_EVENT_DOWN, button_up_pressed);
-  button_on(BTN_POWER, BTN_EVENT_DOWN, button_power_pressed);
-  button_on(BTN_DOWN, BTN_EVENT_DOWN, button_down_pressed);
-
-  while (1) {
-    float lux = ltr329_read_lux();
-    float temp = t117_read_temperature();
-    printf("Ambient Light: %.2f lux\n", lux);
-    printf("Temperature: %.2f °C\n", temp);
-    printf("-----------------------------\n");
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
+  buttons_on(BTN_UP, BTN_EVENT_CLICK, button_up_pressed);
+  buttons_on(BTN_POWER, BTN_EVENT_CLICK, button_power_pressed);
+  buttons_on(BTN_DOWN, BTN_EVENT_CLICK, button_down_pressed);
 }

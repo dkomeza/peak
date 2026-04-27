@@ -24,7 +24,49 @@ button_state_t *button_init(int pin) {
   esp_err_t err = gpio_config(&io_conf);
   ESP_ERROR_CHECK(err);
 
+  int level = gpio_get_level(pin);
+  btn->state = (level == 0) ? BTN_STATE_PRESS : BTN_STATE_IDLE;
+  btn->state_time_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+
   return btn;
+}
+
+volatile callback_t *event_type_to_callback(btn_event_type_t event_type,
+                                            volatile button_state_t *btn) {
+  switch (event_type) {
+  case BTN_EVENT_DOWN:
+    return &btn->on_down;
+  case BTN_EVENT_UP:
+    return &btn->on_up;
+  case BTN_EVENT_CLICK:
+    return &btn->on_click;
+  case BTN_EVENT_LONG_PRESS_START:
+    return &btn->on_long_press_start;
+  case BTN_EVENT_LONG_PRESS_END:
+    return &btn->on_long_press_end;
+  default:
+    return NULL;
+  }
+}
+
+bool is_button_event_active(btn_event_type_t event_type,
+                            volatile button_state_t *btn) {
+  return (btn->pause_mask & event_type) == 0;
+}
+
+volatile callback_t *get_active_callback(btn_event_type_t event_type,
+                                         volatile button_state_t *btn) {
+  if (!is_button_event_active(event_type, btn))
+    return NULL;
+
+  return event_type_to_callback(event_type, btn);
+}
+
+bool button_is_pressed(volatile button_state_t *btn) {
+  if (!btn)
+    return false;
+
+  return btn->state == BTN_STATE_PRESS || btn->state == BTN_STATE_LONG_PRESS;
 }
 
 void button_attach_callback(btn_event_type_t event_type, callback_t callback,
@@ -32,25 +74,9 @@ void button_attach_callback(btn_event_type_t event_type, callback_t callback,
   if (!btn)
     return;
 
-  switch (event_type) {
-  case BTN_EVENT_DOWN:
-    btn->on_down = callback;
-    break;
-  case BTN_EVENT_UP:
-    btn->on_up = callback;
-    break;
-  case BTN_EVENT_CLICK:
-    btn->on_click = callback;
-    break;
-  case BTN_EVENT_LONG_PRESS_START:
-    btn->on_long_press_start = callback;
-    break;
-  case BTN_EVENT_LONG_PRESS_END:
-    btn->on_long_press_end = callback;
-    break;
-  default:
-    break;
-  }
+  volatile callback_t *cb_ptr = event_type_to_callback(event_type, btn);
+  if (cb_ptr)
+    *cb_ptr = callback;
 }
 
 void button_detach_callback(btn_event_type_t event_type,
@@ -65,26 +91,26 @@ void button_detach_callback(btn_event_type_t event_type,
     btn->on_long_press_start = NULL;
     btn->on_long_press_end = NULL;
   } else {
-    switch (event_type) {
-    case BTN_EVENT_DOWN:
-      btn->on_down = NULL;
-      break;
-    case BTN_EVENT_UP:
-      btn->on_up = NULL;
-      break;
-    case BTN_EVENT_CLICK:
-      btn->on_click = NULL;
-      break;
-    case BTN_EVENT_LONG_PRESS_START:
-      btn->on_long_press_start = NULL;
-      break;
-    case BTN_EVENT_LONG_PRESS_END:
-      btn->on_long_press_end = NULL;
-      break;
-    default:
-      break;
-    }
+    volatile callback_t *cb_ptr = event_type_to_callback(event_type, btn);
+    if (cb_ptr)
+      *cb_ptr = NULL;
   }
+}
+
+void button_pause_callback(btn_event_type_t event_type,
+                           volatile button_state_t *btn) {
+  if (!btn)
+    return;
+
+  btn->pause_mask |= event_type;
+}
+
+void button_resume_callback(btn_event_type_t event_type,
+                            volatile button_state_t *btn) {
+  if (!btn)
+    return;
+
+  btn->pause_mask &= (~event_type) & BTN_EVENT_ALL;
 }
 
 void button_update(volatile button_state_t *btn) {
@@ -111,7 +137,7 @@ void button_update(volatile button_state_t *btn) {
       btn->state = BTN_STATE_PRESS;
       btn->state_time_ms = now_ms;
 
-      if (btn->on_down)
+      if (get_active_callback(BTN_EVENT_DOWN, btn))
         btn->on_down();
     }
     break;
@@ -120,15 +146,15 @@ void button_update(volatile button_state_t *btn) {
     if (!is_pressed) {
       btn->state = BTN_STATE_IDLE;
 
-      if (btn->on_up)
+      if (get_active_callback(BTN_EVENT_UP, btn))
         btn->on_up();
-      if (btn->on_click)
+      if (get_active_callback(BTN_EVENT_CLICK, btn))
         btn->on_click();
 
     } else if ((now_ms - btn->state_time_ms) >= LONG_PRESS_TIME_MS) {
       btn->state = BTN_STATE_LONG_PRESS;
 
-      if (btn->on_long_press_start)
+      if (get_active_callback(BTN_EVENT_LONG_PRESS_START, btn))
         btn->on_long_press_start();
     }
     break;
@@ -137,9 +163,9 @@ void button_update(volatile button_state_t *btn) {
     if (!is_pressed) {
       btn->state = BTN_STATE_IDLE;
 
-      if (btn->on_up)
+      if (get_active_callback(BTN_EVENT_UP, btn))
         btn->on_up();
-      if (btn->on_long_press_end)
+      if (get_active_callback(BTN_EVENT_LONG_PRESS_END, btn))
         btn->on_long_press_end();
     }
     break;
