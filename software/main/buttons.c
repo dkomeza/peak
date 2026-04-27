@@ -41,6 +41,11 @@ void buttons_task(void *arg) {
   }
 
   for (;;) {
+    if (!initialized) {
+      vTaskDelete(NULL);
+      return;
+    }
+
     for (int i = 0; i < 3; i++) {
       button_update(buttons[i]);
     }
@@ -49,17 +54,39 @@ void buttons_task(void *arg) {
   }
 }
 
-void button_on(button_t btn, btn_event_type_t event_type, callback_t callback) {
+void buttons_on(button_t btn, btn_event_type_t event_type,
+                callback_t callback) {
   if (!initialized || btn < 0 || btn >= 3)
     return;
 
   button_attach_callback(event_type, callback, buttons[btn]);
 }
 
-void button_clear(button_t btn, btn_event_type_t event_type) {
+void buttons_clear(button_t btn, btn_event_type_t event_type) {
 
   if (!initialized || btn < 0 || btn >= 3)
     return;
 
   button_detach_callback(event_type, buttons[btn]);
+}
+
+bool buttons_is_pressed(button_t btn) {
+  if (!initialized || btn < 0 || btn >= 3)
+    return false;
+
+  return button_is_pressed(buttons[btn]);
+}
+
+void buttons_pause(button_t btn, btn_event_type_t event_type) {
+  if (!initialized || btn < 0 || btn >= 3)
+    return;
+
+  button_pause_callback(event_type, buttons[btn]);
+}
+
+void buttons_resume(button_t btn, btn_event_type_t event_type) {
+  if (!initialized || btn < 0 || btn >= 3)
+    return;
+
+  button_resume_callback(event_type, buttons[btn]);
 }

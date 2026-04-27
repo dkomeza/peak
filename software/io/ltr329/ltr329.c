@@ -14,7 +14,7 @@ i2c_master_dev_handle_t ltr329_dev_handle;
 static const char *TAG = "LTR329";
 static float GAIN = 1.0f;
 static float ITIME = 100.0f; // Integration time in ms
-static float SMOOTHING_FACTOR = 0.2f;
+static float SMOOTHING_FACTOR = 0.05f;
 
 volatile float ltr329_lux = 0.0f;
 

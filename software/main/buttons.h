@@ -11,7 +11,10 @@ typedef enum Button {
 
 void buttons_init(void);
 void buttons_deinit(void);
-void button_on(button_t btn, btn_event_type_t event_type, callback_t callback);
-void button_clear(button_t btn, btn_event_type_t event_type);
+bool buttons_is_pressed(button_t btn);
+void buttons_on(button_t btn, btn_event_type_t event_type, callback_t callback);
+void buttons_clear(button_t btn, btn_event_type_t event_type);
+void buttons_pause(button_t btn, btn_event_type_t event_type);
+void buttons_resume(button_t btn, btn_event_type_t event_type);
 
 #endif
