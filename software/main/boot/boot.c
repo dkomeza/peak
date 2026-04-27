@@ -58,12 +58,12 @@ boot_mode_t boot() {
   uint32_t boot_time = millis();
 
   if (!buttons_is_pressed(BTN_POWER)) {
-    return BOOT_MODE_UNDETERMINED;
+    // esp_deep_sleep
   }
 
   while (millis() < boot_time + BOOT_TIME) {
     if (!buttons_is_pressed(BTN_POWER)) {
-      return BOOT_MODE_UNDETERMINED;
+      // esp_deep_sleep
     }
     vTaskDelay(pdMS_TO_TICKS(10)); // Poll every 10 ms
   }
@@ -73,7 +73,7 @@ boot_mode_t boot() {
   bool down_pressed = buttons_is_pressed(BTN_DOWN);
 
   if (!power_pressed) {
-    return BOOT_MODE_UNDETERMINED;
+    vTaskDelay(pdMS_TO_TICKS(10)); // Poll every 10 ms
   }
 
   if (up_pressed && down_pressed) {
