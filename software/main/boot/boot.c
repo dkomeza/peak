@@ -24,10 +24,12 @@ void mountain_mode_task(void *arg) {
       vTaskDelete(NULL);
       return;
     }
+
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 
   for (;;) {
-    if (start_time + 3000 < millis()) {
+    if (start_time + MOUNTAIN_MODE_HOLD_TIME < millis()) {
       mountain_mode_active = true;
       break;
     }
@@ -84,7 +86,7 @@ boot_mode_t boot() {
 
   buttons_pause(BTN_POWER, BTN_EVENT_ALL);
   buttons_pause(BTN_UP, BTN_EVENT_ALL);
-  xTaskCreate(mountain_mode_task, "Muntain BOOT task", 4096, NULL, 1, NULL);
+  xTaskCreate(mountain_mode_task, "Mountain BOOT task", 4096, NULL, 1, NULL);
 
   return BOOT_MODE_UNDETERMINED;
 }
