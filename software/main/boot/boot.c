@@ -22,6 +22,8 @@ void mountain_mode_task(void *arg) {
     if (millis() > start_time + POWER_BTN_WINDOW) {
       ESP_LOGI(TAG, "Power button held too long. Cancelling mountain mode.");
       vTaskDelete(NULL);
+      buttons_resume(BTN_POWER, BTN_EVENT_ALL);
+      buttons_resume(BTN_UP, BTN_EVENT_ALL);
       return;
     }
 
@@ -50,6 +52,9 @@ void mountain_mode_task(void *arg) {
   while (buttons_is_pressed(BTN_UP)) {
     vTaskDelay(pdMS_TO_TICKS(10));
   }
+
+  buttons_resume(BTN_POWER, BTN_EVENT_ALL);
+  buttons_resume(BTN_UP, BTN_EVENT_ALL);
 
   vTaskDelete(NULL);
 }
