@@ -15,6 +15,8 @@
 static const char *TAG = "PEAK";
 
 void mountain_mode_task(void *arg) {
+  mountain_mode_callback_t cb = (mountain_mode_callback_t)arg;
+
   uint32_t start_time = millis();
   bool mountain_mode_active = false;
 
@@ -44,9 +46,9 @@ void mountain_mode_task(void *arg) {
   }
 
   if (mountain_mode_active) {
-    ESP_LOGI(TAG, "Mountain mode activated!");
-  } else {
-    ESP_LOGI(TAG, "Mountain mode not activated.");
+    if (cb) {
+      cb();
+    }
   }
 
   while (buttons_is_pressed(BTN_UP)) {
@@ -59,7 +61,7 @@ void mountain_mode_task(void *arg) {
   vTaskDelete(NULL);
 }
 
-boot_mode_t boot() {
+boot_mode_t boot(mountain_mode_callback_t cb) {
   uint32_t boot_time = millis();
 
   if (!buttons_is_pressed(BTN_POWER)) {
@@ -78,7 +80,7 @@ boot_mode_t boot() {
   bool down_pressed = buttons_is_pressed(BTN_DOWN);
 
   if (!power_pressed) {
-    vTaskDelay(pdMS_TO_TICKS(10)); // Poll every 10 ms
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 
   if (up_pressed && down_pressed) {
@@ -91,7 +93,8 @@ boot_mode_t boot() {
 
   buttons_pause(BTN_POWER, BTN_EVENT_ALL);
   buttons_pause(BTN_UP, BTN_EVENT_ALL);
-  xTaskCreate(mountain_mode_task, "Mountain BOOT task", 4096, NULL, 1, NULL);
+  xTaskCreate(mountain_mode_task, "mountain_mode_task", 2048, cb,
+              tskIDLE_PRIORITY + 1, NULL);
 
   return BOOT_MODE_UNDETERMINED;
 }

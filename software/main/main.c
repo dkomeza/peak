@@ -1,5 +1,3 @@
-#include "display/lv_display.h"
-#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <esp_event.h>
@@ -12,8 +10,6 @@
 #include "driver/i2c_master.h"
 #include "ltr329.h"
 #include "t117.h"
-
-static const char *TAG = "PEAK";
 
 void i2c_master_init(i2c_master_bus_handle_t *bus_handle) {
   i2c_master_bus_config_t bus_config = {.sda_io_num = 31,
@@ -29,10 +25,16 @@ void button_up_pressed(void) { printf("UP button pressed!\n"); }
 void button_power_pressed(void) { printf("POWER button pressed!\n"); }
 void button_down_pressed(void) { printf("DOWN button pressed!\n"); }
 
+/**
+ * Called when the device is booted into mountain mode. This will be used
+ * to send appropriate commands to the ESC and change the UI
+ */
+void mountain_mode_callback(void) {}
+
 void app_main(void) {
   buttons_init();
 
-  boot_mode_t mode = boot();
+  boot_mode_t mode = boot(mountain_mode_callback);
 
   i2c_master_bus_handle_t bus_handle;
   i2c_master_init(&bus_handle);
