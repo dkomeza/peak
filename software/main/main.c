@@ -1,15 +1,20 @@
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/task.h"
-#include <esp_event.h>
+#include <esp_err.h>
+#include <esp_heap_caps.h>
 #include <esp_timer.h>
-#include <esp_wifi.h>
 #include <nvs_flash.h>
 
-#include "boot/boot.h"
+// #include "boot/boot.h"
 #include "buttons.h"
+#include "can.h"
 #include "driver/i2c_master.h"
 #include "ltr329.h"
 #include "t117.h"
+#include "vesc_bridge.h"
+#include "wireless/udp_bridge.h"
+#include "wireless/wifi.h"
 
 void i2c_master_init(i2c_master_bus_handle_t *bus_handle) {
   i2c_master_bus_config_t bus_config = {.sda_io_num = 31,
@@ -31,10 +36,27 @@ void button_down_pressed(void) { printf("DOWN button pressed!\n"); }
  */
 void mountain_mode_callback(void) {}
 
+static void nvs_init(void) {
+  esp_err_t ret = nvs_flash_init();
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
+      ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ret = nvs_flash_init();
+  }
+  ESP_ERROR_CHECK(ret);
+}
+
 void app_main(void) {
+  nvs_init();
+
   buttons_init();
 
-  boot_mode_t mode = boot(mountain_mode_callback);
+  ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
+  ESP_ERROR_CHECK(can_init());
+  ESP_ERROR_CHECK(vesc_bridge_init());
+
+  vesc_bridge_start(get_udp_transport_iface());
+  // boot_mode_t mode = boot(mountain_mode_callback);
 
   i2c_master_bus_handle_t bus_handle;
   i2c_master_init(&bus_handle);
@@ -45,4 +67,8 @@ void app_main(void) {
   buttons_on(BTN_UP, BTN_EVENT_CLICK, button_up_pressed);
   buttons_on(BTN_POWER, BTN_EVENT_CLICK, button_power_pressed);
   buttons_on(BTN_DOWN, BTN_EVENT_CLICK, button_down_pressed);
+
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
 }
