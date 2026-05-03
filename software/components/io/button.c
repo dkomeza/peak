@@ -1,4 +1,4 @@
-#include "include/button.h"
+#include "button.h"
 #include "hal/gpio_types.h"
 
 #include <driver/gpio.h>

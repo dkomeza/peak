@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS
+        "button.c"
+        "ltr329.c"
+        "t117.c"
+    INCLUDE_DIRS
+        "include"
+    PRIV_INCLUDE_DIRS
+        "include/io"
+    REQUIRES
+        esp_driver_i2c
+    PRIV_REQUIRES
+        esp_driver_gpio
+        esp_timer
+        freertos
+)

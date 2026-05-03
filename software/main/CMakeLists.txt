@@ -1,4 +1,9 @@
-idf_component_register(SRCS "main.c" "buttons.c" "boot/boot.c"
-                       PRIV_REQUIRES ltr329 t117 button esp_wifi nvs_flash esp_timer
-                                     esp_lcd
-                       INCLUDE_DIRS "boot" "." "utils")
+idf_component_register(SRCS "main.c"
+                            "buttons.c"
+                            "boot/boot.c"
+                       PRIV_REQUIRES io vesc connection wireless nvs_flash 
+                                      esp_timer esp_lcd
+                       INCLUDE_DIRS "." "boot" "utils"
+)
+
+target_compile_definitions(${COMPONENT_LIB} PRIVATE)

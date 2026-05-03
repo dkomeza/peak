@@ -1,0 +1,11 @@
+idf_component_register(
+  SRCS
+    "can.c"
+  INCLUDE_DIRS
+    "include"
+  PRIV_INCLUDE_DIRS
+    "include/connection"
+  PRIV_REQUIRES
+    driver
+    esp_driver_twai 
+)

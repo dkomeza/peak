@@ -1,15 +1,27 @@
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/task.h"
-#include <esp_event.h>
+#include <esp_err.h>
+#include <esp_heap_caps.h>
+#include <esp_task.h>
 #include <esp_timer.h>
-#include <esp_wifi.h>
 #include <nvs_flash.h>
 
-#include "boot/boot.h"
+// #include "boot/boot.h"
 #include "buttons.h"
+#include "connection/can.h"
 #include "driver/i2c_master.h"
-#include "ltr329.h"
-#include "t117.h"
+
+#include "io/ltr329.h"
+#include "io/t117.h"
+
+#include "vesc/vesc_bridge.h"
+
+#include "wireless/ble_bridge.h"
+#include "wireless/udp_bridge.h"
+#include "wireless/wifi.h"
+
+#define PEAK_APP_TASK_STACK_SIZE 8192
 
 void i2c_master_init(i2c_master_bus_handle_t *bus_handle) {
   i2c_master_bus_config_t bus_config = {.sda_io_num = 31,
@@ -31,10 +43,29 @@ void button_down_pressed(void) { printf("DOWN button pressed!\n"); }
  */
 void mountain_mode_callback(void) {}
 
-void app_main(void) {
+static void nvs_init(void) {
+  esp_err_t ret = nvs_flash_init();
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
+      ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ret = nvs_flash_init();
+  }
+  ESP_ERROR_CHECK(ret);
+}
+
+static void peak_app_task(void *arg) {
+  (void)arg;
+
+  nvs_init();
+
   buttons_init();
 
-  boot_mode_t mode = boot(mountain_mode_callback);
+  // ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
+  ESP_ERROR_CHECK(can_init());
+  ESP_ERROR_CHECK(vesc_bridge_init());
+
+  vesc_bridge_start(&transport_ble);
+  // boot_mode_t mode = boot(mountain_mode_callback);
 
   i2c_master_bus_handle_t bus_handle;
   i2c_master_init(&bus_handle);
@@ -45,4 +76,17 @@ void app_main(void) {
   buttons_on(BTN_UP, BTN_EVENT_CLICK, button_up_pressed);
   buttons_on(BTN_POWER, BTN_EVENT_CLICK, button_power_pressed);
   buttons_on(BTN_DOWN, BTN_EVENT_CLICK, button_down_pressed);
+
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+}
+
+void app_main(void) {
+  BaseType_t ret = xTaskCreatePinnedToCoreWithCaps(
+      peak_app_task, "peak_app", PEAK_APP_TASK_STACK_SIZE, NULL,
+      ESP_TASK_MAIN_PRIO, NULL, ESP_TASK_MAIN_CORE,
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT | MALLOC_CAP_DMA);
+
+  ESP_ERROR_CHECK(ret == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
 }
