@@ -1,7 +1,7 @@
 #ifndef BUTTONS_H
 #define BUTTONS_H
 
-#include "button.h"
+#include "io/button.h"
 
 typedef enum Button {
   BTN_UP,

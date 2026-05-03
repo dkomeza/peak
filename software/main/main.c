@@ -9,11 +9,14 @@
 
 // #include "boot/boot.h"
 #include "buttons.h"
-#include "can.h"
+#include "connection/can.h"
 #include "driver/i2c_master.h"
-#include "ltr329.h"
-#include "t117.h"
-#include "vesc_bridge.h"
+
+#include "io/ltr329.h"
+#include "io/t117.h"
+
+#include "vesc/vesc_bridge.h"
+
 #include "wireless/ble_bridge.h"
 #include "wireless/udp_bridge.h"
 #include "wireless/wifi.h"

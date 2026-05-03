@@ -1,5 +1,5 @@
 #include "buttons.h"
-#include "button.h"
+#include "io/button.h"
 #include "freertos/idf_additions.h"
 #include <stdbool.h>
 

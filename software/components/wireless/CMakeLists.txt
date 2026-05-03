@@ -1,0 +1,22 @@
+idf_component_register(
+  SRCS
+    "ble.c"
+    "ble_bridge.c"
+    "udp_bridge.c"
+    "wifi.c"
+  INCLUDE_DIRS
+    "include"
+  PRIV_INCLUDE_DIRS
+    "include/wireless"
+  REQUIRES
+    vesc
+
+  PRIV_REQUIRES
+    esp_wifi
+    esp_netif
+    esp_event
+    lwip
+    bt
+    espressif__esp_hosted
+    nvs_flash
+) 
