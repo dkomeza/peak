@@ -191,7 +191,3 @@ const transport_iface_t transport_udp = {.name = "UDP Bridge",
                                          .start = udp_transport_start,
                                          .send = udp_bridge_send,
                                          .stop = udp_bridge_stop};
-
-const transport_iface_t *get_udp_transport_iface(void) {
-  return &transport_udp;
-}
