@@ -1,3 +1,4 @@
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/task.h"
@@ -12,6 +13,7 @@
 #include "connection/can.h"
 #include "driver/i2c_master.h"
 
+#include "io/battery.h"
 #include "io/ltr329.h"
 #include "io/t117.h"
 
@@ -63,6 +65,7 @@ static void peak_app_task(void *arg) {
   // ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
   ESP_ERROR_CHECK(can_init());
   ESP_ERROR_CHECK(vesc_bridge_init());
+  battery_monitor_init();
 
   vesc_bridge_start(&transport_ble);
   // boot_mode_t mode = boot(mountain_mode_callback);
@@ -78,6 +81,11 @@ static void peak_app_task(void *arg) {
   buttons_on(BTN_DOWN, BTN_EVENT_CLICK, button_down_pressed);
 
   for (;;) {
+    ESP_LOGI("PEAK_APP",
+             "Battery Voltage: %.2f V, Ambient Light: %.2f lux, Temperature: "
+             "%.2f °C",
+             battery_read_voltage(), ltr329_read_lux(),
+             t117_read_temperature());
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }

@@ -13,6 +13,7 @@ static bool s_running = false;
 static ble_uuid128_t s_adv_uuid;
 static bool s_has_adv_uuid = false;
 static const char *s_device_name = "ESP32";
+static uint8_t s_own_addr_type = BLE_OWN_ADDR_PUBLIC;
 
 static void ble_app_advertise(void);
 
@@ -68,12 +69,17 @@ static void ble_app_advertise(void) {
   adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
   adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
 
-  ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER, &adv_params,
+  ble_gap_adv_start(s_own_addr_type, NULL, BLE_HS_FOREVER, &adv_params,
                     ble_gap_event, NULL);
 }
 
 static void ble_app_on_sync(void) {
-  ble_hs_id_infer_auto(0, NULL);
+  int rc = ble_hs_id_infer_auto(0, &s_own_addr_type);
+  if (rc != 0) {
+    ESP_LOGE(TAG, "Failed to infer BLE address type; rc=%d", rc);
+    return;
+  }
+
   ble_app_advertise();
 }
 

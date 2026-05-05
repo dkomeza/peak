@@ -1,5 +1,6 @@
 idf_component_register(
     SRCS
+        "battery.c"
         "button.c"
         "ltr329.c"
         "t117.c"
@@ -8,6 +9,7 @@ idf_component_register(
     PRIV_INCLUDE_DIRS
         "include/io"
     REQUIRES
+        esp_adc
         esp_driver_i2c
     PRIV_REQUIRES
         esp_driver_gpio

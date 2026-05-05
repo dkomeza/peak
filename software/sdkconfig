@@ -1110,6 +1110,14 @@ CONFIG_ESP_TLS_DYN_BUF_STRATEGY_SUPPORTED=y
 # end of ESP-TLS
 
 #
+# ADC and ADC Calibration
+#
+# CONFIG_ADC_ONESHOT_CTRL_FUNC_IN_IRAM is not set
+# CONFIG_ADC_CONTINUOUS_ISR_IRAM_SAFE is not set
+# CONFIG_ADC_ENABLE_DEBUG_LOG is not set
+# end of ADC and ADC Calibration
+
+#
 # Wireless Coexistence
 #
 # CONFIG_ESP_COEX_GPIO_DEBUG is not set
