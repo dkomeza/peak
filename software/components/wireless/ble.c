@@ -1,5 +1,6 @@
 #include "wireless/ble.h"
 #include "esp_log.h"
+#include "esp_hosted.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "nvs_flash.h"
@@ -14,8 +15,62 @@ static ble_uuid128_t s_adv_uuid;
 static bool s_has_adv_uuid = false;
 static const char *s_device_name = "ESP32";
 static uint8_t s_own_addr_type = BLE_OWN_ADDR_PUBLIC;
+static bool s_hosted_bt_enabled = false;
 
 static void ble_app_advertise(void);
+
+static esp_err_t ble_hosted_bt_start(void) {
+  esp_err_t ret = esp_hosted_init();
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to init ESP-Hosted; err=%s", esp_err_to_name(ret));
+    return ret;
+  }
+
+  ret = esp_hosted_connect_to_slave();
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to connect to ESP-Hosted co-processor; err=%s",
+             esp_err_to_name(ret));
+    return ret;
+  }
+
+  ret = esp_hosted_bt_controller_init();
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to init hosted BT controller; err=%s",
+             esp_err_to_name(ret));
+    return ret;
+  }
+
+  ret = esp_hosted_bt_controller_enable();
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to enable hosted BT controller; err=%s",
+             esp_err_to_name(ret));
+    esp_hosted_bt_controller_deinit(false);
+    return ret;
+  }
+
+  s_hosted_bt_enabled = true;
+  return ESP_OK;
+}
+
+static void ble_hosted_bt_stop(void) {
+  if (!s_hosted_bt_enabled) {
+    return;
+  }
+
+  esp_err_t ret = esp_hosted_bt_controller_disable();
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to disable hosted BT controller; err=%s",
+             esp_err_to_name(ret));
+  }
+
+  ret = esp_hosted_bt_controller_deinit(false);
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to deinit hosted BT controller; err=%s",
+             esp_err_to_name(ret));
+  }
+
+  s_hosted_bt_enabled = false;
+}
 
 static int ble_gap_event(struct ble_gap_event *event, void *arg) {
   switch (event->type) {
@@ -109,7 +164,17 @@ esp_err_t ble_manager_start(const char *device_name,
     s_has_adv_uuid = true;
   }
 
-  nimble_port_init();
+  ret = ble_hosted_bt_start();
+  if (ret != ESP_OK) {
+    return ret;
+  }
+
+  ret = nimble_port_init();
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to init NimBLE host; err=%s", esp_err_to_name(ret));
+    ble_hosted_bt_stop();
+    return ret;
+  }
 
   ble_svc_gap_device_name_set(s_device_name);
   ble_svc_gap_init();
@@ -139,6 +204,7 @@ esp_err_t ble_manager_stop(void) {
 
   nimble_port_stop();
   nimble_port_deinit();
+  ble_hosted_bt_stop();
 
   s_running = false;
   s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
