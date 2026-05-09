@@ -62,7 +62,7 @@ static void peak_app_task(void *arg) {
 
   buttons_init();
 
-  // ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
+  ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
   ESP_ERROR_CHECK(can_init());
   ESP_ERROR_CHECK(vesc_bridge_init());
   battery_monitor_init();
