@@ -62,30 +62,28 @@ static void peak_app_task(void *arg) {
 
   buttons_init();
 
-  ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
+  // ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
+  ESP_ERROR_CHECK(wifi_start_ap());
   ESP_ERROR_CHECK(can_init());
-  ESP_ERROR_CHECK(vesc_bridge_init());
-  battery_monitor_init();
 
-  vesc_bridge_start(&transport_ble);
+  ESP_ERROR_CHECK(vesc_bridge_init());
+  vesc_bridge_start(&transport_udp);
+
+  // battery_monitor_init();
+
   // boot_mode_t mode = boot(mountain_mode_callback);
 
-  i2c_master_bus_handle_t bus_handle;
-  i2c_master_init(&bus_handle);
-
-  ltr329_sensor_init(&bus_handle);
-  t117_sensor_init(&bus_handle);
-
-  buttons_on(BTN_UP, BTN_EVENT_CLICK, button_up_pressed);
-  buttons_on(BTN_POWER, BTN_EVENT_CLICK, button_power_pressed);
-  buttons_on(BTN_DOWN, BTN_EVENT_CLICK, button_down_pressed);
+  // i2c_master_bus_handle_t bus_handle;
+  // i2c_master_init(&bus_handle);
+  //
+  // ltr329_sensor_init(&bus_handle);
+  // t117_sensor_init(&bus_handle);
+  //
+  // buttons_on(BTN_UP, BTN_EVENT_CLICK, button_up_pressed);
+  // buttons_on(BTN_POWER, BTN_EVENT_CLICK, button_power_pressed);
+  // buttons_on(BTN_DOWN, BTN_EVENT_CLICK, button_down_pressed);
 
   for (;;) {
-    ESP_LOGI("PEAK_APP",
-             "Battery Voltage: %.2f V, Ambient Light: %.2f lux, Temperature: "
-             "%.2f °C",
-             battery_read_voltage(), ltr329_read_lux(),
-             t117_read_temperature());
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
