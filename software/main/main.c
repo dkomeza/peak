@@ -20,6 +20,7 @@
 #include "vesc/vesc_bridge.h"
 
 #include "wireless/ble_bridge.h"
+#include "wireless/ble_ota.h"
 #include "wireless/udp_bridge.h"
 #include "wireless/wifi.h"
 
@@ -64,6 +65,7 @@ static void peak_app_task(void *arg) {
 
   // ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
   ESP_ERROR_CHECK(wifi_start_ap());
+  ESP_ERROR_CHECK(ble_ota_start());
   ESP_ERROR_CHECK(can_init());
 
   ESP_ERROR_CHECK(vesc_bridge_init());
@@ -84,6 +86,7 @@ static void peak_app_task(void *arg) {
   // buttons_on(BTN_DOWN, BTN_EVENT_CLICK, button_down_pressed);
 
   for (;;) {
+    printf("Hello, PEAK!\n");
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }

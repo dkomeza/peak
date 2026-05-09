@@ -85,9 +85,6 @@ esp_err_t wifi_start_ap(void) {
   esp_netif_create_default_wifi_ap();
   wifi_init_driver();
 
-  uint8_t mac[6];
-  ESP_ERROR_CHECK(esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP));
-
   wifi_config_t wifi_config = {
       .ap =
           {
@@ -97,12 +94,16 @@ esp_err_t wifi_start_ap(void) {
           },
   };
 
+  ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+
+  uint8_t mac[6];
+  ESP_ERROR_CHECK(esp_wifi_get_mac(WIFI_IF_AP, mac));
+
   int ssid_len = snprintf((char *)wifi_config.ap.ssid,
                           sizeof(wifi_config.ap.ssid), "PEAK-%02X%02X",
                           mac[4], mac[5]);
   wifi_config.ap.ssid_len = (uint8_t)ssid_len;
 
-  ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
 
