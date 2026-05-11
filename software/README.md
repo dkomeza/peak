@@ -3,6 +3,55 @@
 
 # Hello World Example
 
+## BLE-triggered OTA update
+
+Install the PC-side OTA helper dependencies once from the repository root:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r scripts/ble-ota/requirements.txt
+```
+
+The display starts a BLE OTA control service named `PEAK` while keeping the
+firmware download on Wi-Fi. Connect the PC to the display's Wi-Fi AP, host the
+firmware binary from a machine reachable by the display, then trigger the update
+over BLE:
+
+```bash
+python3 -m http.server 8000
+python3 scripts/ble-ota/ble-ota.py http://192.168.4.2:8000/build/peak.bin
+```
+
+The helper can also serve the firmware file itself:
+
+```bash
+python3 scripts/ble-ota/ble-ota.py --serve build/peak.bin
+```
+
+By default it binds the HTTP server to `0.0.0.0:8000` and auto-detects the
+local address used to reach the display AP at `192.168.4.1`. If auto-detection
+does not match your network, pass the URL host explicitly:
+
+```bash
+python3 scripts/ble-ota/ble-ota.py --serve --url-host 192.168.4.2 build/peak.bin
+```
+
+If the display is not at the default AP address, pass `--display-host` so the
+script can auto-detect the correct local interface address.
+
+If macOS shows the device under a cached name such as `nimble`, inspect the BLE
+advertisements and use the address directly if needed:
+
+```bash
+python3 scripts/ble-ota/ble-ota.py --scan
+python3 scripts/ble-ota/ble-ota.py --address <address-from-scan> --serve build/peak.bin
+```
+
+The BLE command characteristic accepts `URL <firmware-url>`, `SET_URL
+<firmware-url>`, `START`, and `STATUS`. Status notifications are JSON lines with
+state, percent, downloaded bytes, total bytes, speed, and the last error.
+
 Starts a FreeRTOS task to print "Hello World".
 
 (See the README.md file in the upper level 'examples' directory for more information about examples.)
