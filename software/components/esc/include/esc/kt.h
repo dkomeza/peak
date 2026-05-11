@@ -5,17 +5,18 @@
 
 typedef struct {
   uint8_t val;
+  uint16_t circumference_mm;
   char *name;
 } wheel_size_t;
 
 static const wheel_size_t WHEEL_SIZES[] = {
-    {30, "29\""}, {28, "28\""}, {24, "700C"},
-    {20, "26\""}, {16, "24\""}, {8, "20\""},
-};
+    {30, 2298, "29\""}, {28, 2150, "28\""}, {24, 2124, "700C"},
+    {20, 2073, "26\""}, {16, 1905, "24\""}, {8, 1550, "20\""}};
 
 typedef struct {
   uint8_t battery_level;
   float speed;
+  float rpm;
   uint16_t power;
   int8_t motor_temp;
 
@@ -58,8 +59,7 @@ void esc_kt_init(void);
 /**
  * Gets the latest data received from the ESC.
  * This is thread safe and blocking.
- * Remember to free the returned pointer when done!!!
  */
-esc_kt_data_t *esc_kt_get_data(void);
+void esc_kt_get_data(esc_kt_data_t *data);
 
 #endif
