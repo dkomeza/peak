@@ -58,6 +58,7 @@ void esc_kt_init(void);
 /**
  * Gets the latest data received from the ESC.
  * This is thread safe and blocking.
+ * Remember to free the returned pointer when done!!!
  */
 esc_kt_data_t *esc_kt_get_data(void);
 

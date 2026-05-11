@@ -8,7 +8,7 @@
 
 static const char *TAG = "esc_kt";
 
-SemaphoreHandle_t esc_kt_mutex;
+static SemaphoreHandle_t esc_kt_data_mutex;
 
 #define RX_PACKET_SIZE 12
 #define TX_PACKET_SIZE 13
@@ -55,8 +55,18 @@ void esc_kt_setup_uart(void) {
 }
 
 void esc_kt_init(void) {
-  esc_kt_mutex = xSemaphoreCreateMutex();
+  esc_kt_data_mutex = xSemaphoreCreateMutex();
 
   xTaskCreate(esc_kt_receive_task, "esc_kt_receive_task", 4096, NULL, 5, NULL);
   xTaskCreate(esc_kt_send_task, "esc_kt_send_task", 4096, NULL, 5, NULL);
+}
+
+esc_kt_data_t *esc_kt_get_data(void) {
+  esc_kt_data_t *data = malloc(sizeof(esc_kt_data_t));
+
+  xSemaphoreTake(esc_kt_data_mutex, portMAX_DELAY);
+  memcpy(data, &data, sizeof(esc_kt_data_t));
+  xSemaphoreGive(esc_kt_data_mutex);
+
+  return data;
 }
