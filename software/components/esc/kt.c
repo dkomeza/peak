@@ -155,6 +155,8 @@ void esc_kt_init(void) {
   esc_kt_data_mutex = xSemaphoreCreateMutex();
   peak_kt_data_mutex = xSemaphoreCreateMutex();
 
+  esc_kt_setup_uart();
+
   xTaskCreate(esc_kt_receive_task, "esc_kt_receive_task", 4096, NULL, 5, NULL);
   xTaskCreate(esc_kt_send_task, "esc_kt_send_task", 4096, NULL, 5, NULL);
 }
