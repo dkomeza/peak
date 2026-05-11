@@ -26,14 +26,16 @@
 
 #define PEAK_APP_TASK_STACK_SIZE 8192
 
-void i2c_master_init(i2c_master_bus_handle_t *bus_handle) {
+static i2c_master_bus_handle_t bus_handle;
+
+void i2c_master_init() {
   i2c_master_bus_config_t bus_config = {.sda_io_num = 31,
                                         .scl_io_num = 30,
                                         .clk_source = I2C_CLK_SRC_DEFAULT,
                                         .flags = {
                                             .enable_internal_pullup = false,
                                         }};
-  ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, bus_handle));
+  ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &bus_handle));
 }
 
 void button_up_pressed(void) { printf("UP button pressed!\n"); }
@@ -58,10 +60,11 @@ static void nvs_init(void) {
 
 static void peak_app_task(void *arg) {
   (void)arg;
-
   nvs_init();
 
   buttons_init();
+
+  // boot_mode_t mode = boot(mountain_mode_callback);
 
   // ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
   ESP_ERROR_CHECK(wifi_start_ap());
@@ -71,22 +74,18 @@ static void peak_app_task(void *arg) {
   ESP_ERROR_CHECK(vesc_bridge_init());
   vesc_bridge_start(&transport_udp);
 
-  // battery_monitor_init();
+  // IO initialization
+  i2c_master_init();
+  ltr329_sensor_init(&bus_handle);
+  t117_sensor_init(&bus_handle);
+  battery_monitor_init();
 
-  // boot_mode_t mode = boot(mountain_mode_callback);
-
-  // i2c_master_bus_handle_t bus_handle;
-  // i2c_master_init(&bus_handle);
-  //
-  // ltr329_sensor_init(&bus_handle);
-  // t117_sensor_init(&bus_handle);
-  //
-  // buttons_on(BTN_UP, BTN_EVENT_CLICK, button_up_pressed);
-  // buttons_on(BTN_POWER, BTN_EVENT_CLICK, button_power_pressed);
-  // buttons_on(BTN_DOWN, BTN_EVENT_CLICK, button_down_pressed);
+  // Button event handlers
+  buttons_on(BTN_UP, BTN_EVENT_CLICK, button_up_pressed);
+  buttons_on(BTN_POWER, BTN_EVENT_CLICK, button_power_pressed);
+  buttons_on(BTN_DOWN, BTN_EVENT_CLICK, button_down_pressed);
 
   for (;;) {
-    printf("Hello, PEAK!\n");
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
