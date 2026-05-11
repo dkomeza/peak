@@ -1,6 +1,6 @@
 #include "wireless/ble.h"
-#include "esp_log.h"
 #include "esp_hosted.h"
+#include "esp_log.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "nvs_flash.h"
@@ -13,7 +13,7 @@ static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static bool s_running = false;
 static ble_uuid128_t s_adv_uuid;
 static bool s_has_adv_uuid = false;
-static const char *s_device_name = "ESP32";
+static const char *s_device_name = "PEAK";
 static uint8_t s_own_addr_type = BLE_OWN_ADDR_PUBLIC;
 static bool s_hosted_bt_enabled = false;
 

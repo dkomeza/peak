@@ -1,14 +1,4 @@
 dependencies:
-  espressif/cmake_utilities:
-    component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
-    dependencies:
-    - name: idf
-      require: private
-      version: '>=4.1'
-    source:
-      registry_url: https://components.espressif.com
-      type: service
-    version: 0.5.3
   espressif/eppp_link:
     component_hash: 04f7f31868b8ae6014c96132740a192d09611a6e46aaa7038c865ffc7e26b38f
     dependencies:
@@ -24,7 +14,7 @@ dependencies:
       type: service
     version: 1.1.5
   espressif/esp_hosted:
-    component_hash: d1f01fbe9b7ee867e1c330754fe46cb550375e27edf2159e9b670f29bd36b682
+    component_hash: a424e4cf8de13b657d09f14dbd615cc946cffdc3f032509915d3058f4637fa72
     dependencies:
     - name: idf
       require: private
@@ -32,24 +22,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 2.12.6
-  espressif/esp_lcd_st7701:
-    component_hash: 3fb061112bfe5402dcf5e09ff7e7f5b09a96b9a3fdd81c59d69996626b4dbc2f
-    dependencies:
-    - name: espressif/cmake_utilities
-      registry_url: https://components.espressif.com
-      require: private
-      version: 0.*
-    - name: idf
-      require: private
-      version: '>=5.4'
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    targets:
-    - esp32s3
-    - esp32p4
-    version: 2.0.2
+    version: 2.12.7
   espressif/esp_serial_slave_link:
     component_hash: ac1776806de0a6e371c84e87898bb983e19ce62aa7f1e2e5c4a3b0234a575d2c
     dependencies:
@@ -97,20 +70,11 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.5.1
-  lvgl/lvgl:
-    component_hash: 184e532558c1c45fefed631f3e235423d22582aafb4630f3e8885c35281a49ae
-    dependencies: []
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    version: 9.5.0
+    version: 6.0.1
 direct_dependencies:
 - espressif/esp_hosted
-- espressif/esp_lcd_st7701
 - espressif/esp_wifi_remote
 - idf
-- lvgl/lvgl
-manifest_hash: 8af7fa161309a419bd07852e6e2471c448b5a8e27d21b3a73722cfe57bdcc588
+manifest_hash: c5223dd829a55aa21a09fbcd5ae2b1570126fc67994113d0f7b7910fb58d3936
 target: esp32p4
-version: 2.0.0
+version: 3.0.0
