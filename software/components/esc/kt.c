@@ -1,6 +1,7 @@
 #include "esc/kt.h"
 
 #include <driver/uart.h>
+#include <string.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"

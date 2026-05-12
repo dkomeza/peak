@@ -1,6 +1,7 @@
 #ifndef ESC_KT_H
 #define ESC_KT_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef struct {

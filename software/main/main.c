@@ -67,9 +67,9 @@ static void peak_app_task(void *arg) {
   // boot_mode_t mode = boot(mountain_mode_callback);
 
   // ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
+  ESP_ERROR_CHECK(can_init());
   ESP_ERROR_CHECK(wifi_start_ap());
   ESP_ERROR_CHECK(ble_ota_start());
-  ESP_ERROR_CHECK(can_init());
 
   ESP_ERROR_CHECK(vesc_bridge_init());
   vesc_bridge_start(&transport_udp);
