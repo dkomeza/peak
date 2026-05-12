@@ -124,7 +124,8 @@ static esp_err_t display_panel_init(esp_lcd_panel_handle_t *out_panel) {
       .chan_id = 3,
       .voltage_mv = 2500,
   };
-  ESP_ERROR_CHECK(esp_ldo_acquire_channel(&ldo_cfg, &ldo_mipi_phy));
+  ESP_RETURN_ON_ERROR(esp_ldo_acquire_channel(&ldo_cfg, &ldo_mipi_phy), TAG,
+                      "failed to acquire MIPI PHY LDO");
 
   // 1. DSI bus
   ESP_LOGI(TAG, "Initializing DSI bus...");
@@ -135,7 +136,8 @@ static esp_err_t display_panel_init(esp_lcd_panel_handle_t *out_panel) {
       .phy_clk_src = MIPI_DSI_PHY_CLK_SRC_DEFAULT,
       .lane_bit_rate_mbps = 500,
   };
-  ESP_ERROR_CHECK(esp_lcd_new_dsi_bus(&dsi_bus_cfg, &dsi_bus));
+  ESP_RETURN_ON_ERROR(esp_lcd_new_dsi_bus(&dsi_bus_cfg, &dsi_bus), TAG,
+                      "failed to create DSI bus");
   ESP_LOGI(TAG, "DSI bus created successfully!");
 
   // 2. DBI panel IO (command channel)
@@ -145,7 +147,8 @@ static esp_err_t display_panel_init(esp_lcd_panel_handle_t *out_panel) {
       .lcd_cmd_bits = 8,
       .lcd_param_bits = 8,
   };
-  ESP_ERROR_CHECK(esp_lcd_new_panel_io_dbi(dsi_bus, &dbi_cfg, &dbi_io));
+  ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_dbi(dsi_bus, &dbi_cfg, &dbi_io),
+                      TAG, "failed to create DBI panel IO");
   ESP_LOGI(TAG, "DBI panel IO created successfully!");
 
   // 3. DPI panel configuration
@@ -198,14 +201,18 @@ static esp_err_t display_panel_init(esp_lcd_panel_handle_t *out_panel) {
   // esp_lcd_new_panel_st7701() with use_mipi_interface=1 calls the MIPI
   // variant internally, which creates the DPI panel and returns its handle.
   esp_lcd_panel_handle_t panel = NULL;
-  ESP_ERROR_CHECK(esp_lcd_new_panel_st7701(dbi_io, &panel_dev_cfg, &panel));
+  ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7701(dbi_io, &panel_dev_cfg, &panel),
+                      TAG, "failed to create ST7701 panel");
   ESP_LOGI(TAG, "ST7701 panel created successfully");
-  ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
-  ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
+  ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "panel reset failed");
+  ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "panel init failed");
 
   // Backlight enable
-  gpio_set_direction(DISPLAY_BACKLIGHT_GPIO, GPIO_MODE_OUTPUT);
-  gpio_set_level(DISPLAY_BACKLIGHT_GPIO, 1);
+  ESP_RETURN_ON_ERROR(
+      gpio_set_direction(DISPLAY_BACKLIGHT_GPIO, GPIO_MODE_OUTPUT), TAG,
+      "failed to configure backlight GPIO");
+  ESP_RETURN_ON_ERROR(gpio_set_level(DISPLAY_BACKLIGHT_GPIO, 1), TAG,
+                      "failed to enable backlight");
 
   *out_panel = panel;
   return ESP_OK;
@@ -227,9 +234,12 @@ static bool display_notify_flush_ready(esp_lcd_panel_handle_t panel,
 
 static void display_flush_cb(lv_display_t *disp, const lv_area_t *area,
                              uint8_t *px_buf) {
-  (void)disp;
-  esp_lcd_panel_draw_bitmap(s_dpi_panel, area->x1, area->y1, area->x2 + 1,
-                            area->y2 + 1, px_buf);
+  esp_err_t err = esp_lcd_panel_draw_bitmap(
+      s_dpi_panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_buf);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "panel draw failed: %s", esp_err_to_name(err));
+    lv_display_flush_ready(disp);
+  }
 }
 
 static void display_lvgl_task(void *arg) {
@@ -265,8 +275,9 @@ esp_err_t display_init(void) {
   esp_lcd_dpi_panel_event_callbacks_t cbs = {
       .on_color_trans_done = display_notify_flush_ready,
   };
-  ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(
-      s_dpi_panel, &cbs, s_lvgl_display));
+  ESP_RETURN_ON_ERROR(esp_lcd_dpi_panel_register_event_callbacks(
+                          s_dpi_panel, &cbs, s_lvgl_display),
+                      TAG, "failed to register panel callbacks");
 
   size_t draw_buffer_sz =
       DISPLAY_H_RES * DISPLAY_BUFFER_LINES * DISPLAY_BPP;
