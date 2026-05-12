@@ -4,4 +4,5 @@ dependencies:
     version: '>=5.5.1'
   espressif/esp_wifi_remote: '*'
   espressif/esp_hosted: '*'
+  espressif/esp_lcd_st7701: "^2.0.2"
   lvgl/lvgl: "^9.*"
