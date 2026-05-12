@@ -21,7 +21,6 @@ void peak_ui_style_screen(lv_obj_t *obj) {
 }
 
 void peak_ui_style_card(lv_obj_t *obj) {
-  lv_obj_remove_style_all(obj);
   lv_obj_set_style_bg_color(obj, peak_ui_color_panel(), 0);
   lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
   lv_obj_set_style_border_color(obj, lv_color_hex(0x2A3337), 0);
@@ -31,7 +30,6 @@ void peak_ui_style_card(lv_obj_t *obj) {
 }
 
 void peak_ui_style_pill(lv_obj_t *obj) {
-  lv_obj_remove_style_all(obj);
   lv_obj_set_style_bg_color(obj, peak_ui_color_panel_alt(), 0);
   lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
   lv_obj_set_style_border_color(obj, lv_color_hex(0x2A3337), 0);
