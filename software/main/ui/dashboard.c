@@ -13,6 +13,19 @@
 #define PEAK_DASHBOARD_SPEED_SCALE 384
 #define PEAK_DASHBOARD_FONT_SMALL LV_FONT_DEFAULT
 #define PEAK_DASHBOARD_FONT_MEDIUM LV_FONT_DEFAULT
+#define PEAK_DASHBOARD_RETURN_ON_ERROR(expr)                                      \
+  do {                                                                            \
+    esp_err_t err_rc = (expr);                                                    \
+    if (err_rc != ESP_OK) {                                                       \
+      return err_rc;                                                              \
+    }                                                                             \
+  } while (0)
+#define PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(obj)                                \
+  do {                                                                            \
+    if ((obj) == NULL) {                                                          \
+      return ESP_ERR_NO_MEM;                                                      \
+    }                                                                             \
+  } while (0)
 
 typedef struct {
   lv_obj_t *screen;
@@ -36,37 +49,70 @@ static uint16_t clamp_u16(uint16_t value, uint16_t max) {
   return value > max ? max : value;
 }
 
-static lv_obj_t *create_label(lv_obj_t *parent, const char *text,
-                              lv_color_t color, const lv_font_t *font) {
-  lv_obj_t *label = lv_label_create(parent);
-  lv_label_set_text(label, text);
-  peak_ui_style_label(label, color, font);
-  return label;
+static bool view_ready(void) {
+  if (s_view.screen == NULL || s_view.status_label == NULL ||
+      s_view.battery_label == NULL || s_view.mode_label == NULL ||
+      s_view.speed_label == NULL || s_view.power_label == NULL ||
+      s_view.range_label == NULL || s_view.thermal_label == NULL ||
+      s_view.distance_label == NULL || s_view.time_label == NULL ||
+      s_view.average_label == NULL || s_view.arc == NULL) {
+    return false;
+  }
+
+  for (int i = 0; i < PEAK_DASHBOARD_SEGMENT_COUNT; i++) {
+    if (s_view.segments[i] == NULL) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
-static lv_obj_t *create_card(lv_obj_t *parent, int32_t width, int32_t height) {
+static esp_err_t create_label(lv_obj_t *parent, const char *text,
+                              lv_color_t color, const lv_font_t *font,
+                              lv_obj_t **label_out) {
+  lv_obj_t *label = lv_label_create(parent);
+  PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(label);
+  lv_label_set_text(label, text);
+  peak_ui_style_label(label, color, font);
+  if (label_out != NULL) {
+    *label_out = label;
+  }
+  return ESP_OK;
+}
+
+static esp_err_t create_card(lv_obj_t *parent, int32_t width, int32_t height,
+                             lv_obj_t **card_out) {
   lv_obj_t *card = lv_obj_create(parent);
+  PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(card);
   peak_ui_style_card(card);
   lv_obj_set_size(card, width, height);
   lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-  return card;
+  *card_out = card;
+  return ESP_OK;
 }
 
-static lv_obj_t *create_metric_card(lv_obj_t *parent, const char *caption,
+static esp_err_t create_metric_card(lv_obj_t *parent, const char *caption,
                                     lv_obj_t **value_out) {
-  lv_obj_t *card = create_card(parent, 0, PEAK_DASHBOARD_SMALL_CARD_HEIGHT);
+  lv_obj_t *card = NULL;
+
+  PEAK_DASHBOARD_RETURN_ON_ERROR(
+      create_card(parent, 0, PEAK_DASHBOARD_SMALL_CARD_HEIGHT, &card));
   lv_obj_set_flex_grow(card, 1);
   lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_gap(card, 6, LV_PART_MAIN);
 
-  create_label(card, caption, peak_ui_color_muted(), PEAK_DASHBOARD_FONT_SMALL);
-  *value_out =
-      create_label(card, "--", peak_ui_color_text(), PEAK_DASHBOARD_FONT_MEDIUM);
-  return card;
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      card, caption, peak_ui_color_muted(), PEAK_DASHBOARD_FONT_SMALL,
+      NULL));
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      card, "--", peak_ui_color_text(), PEAK_DASHBOARD_FONT_MEDIUM, value_out));
+  return ESP_OK;
 }
 
-static void create_status_row(lv_obj_t *screen) {
+static esp_err_t create_status_row(lv_obj_t *screen) {
   lv_obj_t *row = lv_obj_create(screen);
+  PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(row);
   lv_obj_remove_style_all(row);
   lv_obj_set_size(row, LV_PCT(100), 42);
   lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
@@ -74,31 +120,38 @@ static void create_status_row(lv_obj_t *screen) {
                         LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   lv_obj_t *status = lv_obj_create(row);
+  PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(status);
   peak_ui_style_pill(status);
   lv_obj_clear_flag(status, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_size(status, 112, 36);
-  s_view.status_label = create_label(status, "BT ACTIVE", peak_ui_color_text(),
-                                     PEAK_DASHBOARD_FONT_SMALL);
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      status, "BT ACTIVE", peak_ui_color_text(), PEAK_DASHBOARD_FONT_SMALL,
+      &s_view.status_label));
   lv_obj_center(s_view.status_label);
 
   lv_obj_t *battery = lv_obj_create(row);
+  PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(battery);
   peak_ui_style_pill(battery);
   lv_obj_clear_flag(battery, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_size(battery, 100, 36);
-  s_view.battery_label = create_label(battery, "84% BAT",
-                                      peak_ui_color_text(),
-                                      PEAK_DASHBOARD_FONT_SMALL);
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      battery, "84% BAT", peak_ui_color_text(), PEAK_DASHBOARD_FONT_SMALL,
+      &s_view.battery_label));
   lv_obj_center(s_view.battery_label);
+
+  return ESP_OK;
 }
 
-static void create_hero(lv_obj_t *screen) {
+static esp_err_t create_hero(lv_obj_t *screen) {
   lv_obj_t *hero = lv_obj_create(screen);
+  PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(hero);
   lv_obj_remove_style_all(hero);
   lv_obj_clear_flag(hero, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_size(hero, LV_PCT(100), PEAK_DASHBOARD_HERO_HEIGHT);
   lv_obj_set_style_pad_top(hero, 0, LV_PART_MAIN);
 
   s_view.arc = lv_arc_create(hero);
+  PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(s_view.arc);
   lv_obj_set_size(s_view.arc, PEAK_DASHBOARD_ARC_SIZE, PEAK_DASHBOARD_ARC_SIZE);
   lv_obj_align(s_view.arc, LV_ALIGN_TOP_MID, 0, 0);
   lv_arc_set_range(s_view.arc, 0, PEAK_DASHBOARD_ARC_MAX_KMH);
@@ -113,37 +166,44 @@ static void create_hero(lv_obj_t *screen) {
   lv_obj_remove_style(s_view.arc, NULL, LV_PART_KNOB);
   lv_obj_clear_flag(s_view.arc, LV_OBJ_FLAG_CLICKABLE);
 
-  s_view.mode_label =
-      create_label(hero, "ECO - TORQUE", peak_ui_color_accent(),
-                   PEAK_DASHBOARD_FONT_SMALL);
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      hero, "ECO - TORQUE", peak_ui_color_accent(), PEAK_DASHBOARD_FONT_SMALL,
+      &s_view.mode_label));
   lv_obj_align(s_view.mode_label, LV_ALIGN_TOP_MID, 0, 78);
 
-  s_view.speed_label =
-      create_label(hero, "0", peak_ui_color_text(), PEAK_DASHBOARD_FONT_MEDIUM);
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      hero, "0", peak_ui_color_text(), PEAK_DASHBOARD_FONT_MEDIUM,
+      &s_view.speed_label));
   lv_obj_set_style_transform_scale(s_view.speed_label,
                                    PEAK_DASHBOARD_SPEED_SCALE, LV_PART_MAIN);
   lv_obj_set_style_transform_pivot_x(s_view.speed_label, 0, LV_PART_MAIN);
   lv_obj_set_style_transform_pivot_y(s_view.speed_label, 0, LV_PART_MAIN);
   lv_obj_align(s_view.speed_label, LV_ALIGN_TOP_MID, -28, 112);
 
-  lv_obj_t *unit_label = create_label(hero, "km/h", peak_ui_color_muted(),
-                                      PEAK_DASHBOARD_FONT_SMALL);
+  lv_obj_t *unit_label = NULL;
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      hero, "km/h", peak_ui_color_muted(), PEAK_DASHBOARD_FONT_SMALL,
+      &unit_label));
   lv_obj_align_to(unit_label, s_view.speed_label, LV_ALIGN_OUT_RIGHT_MID, 10,
                   2);
 
   lv_obj_t *power = lv_obj_create(hero);
+  PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(power);
   peak_ui_style_pill(power);
   lv_obj_clear_flag(power, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_size(power, 176, 48);
   lv_obj_align(power, LV_ALIGN_TOP_MID, 0, 212);
-  s_view.power_label =
-      create_label(power, "0 WATTS", peak_ui_color_text(),
-                   PEAK_DASHBOARD_FONT_MEDIUM);
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      power, "0 WATTS", peak_ui_color_text(), PEAK_DASHBOARD_FONT_MEDIUM,
+      &s_view.power_label));
   lv_obj_center(s_view.power_label);
+
+  return ESP_OK;
 }
 
-static void create_segments(lv_obj_t *screen) {
+static esp_err_t create_segments(lv_obj_t *screen) {
   lv_obj_t *row = lv_obj_create(screen);
+  PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(row);
   lv_obj_remove_style_all(row);
   lv_obj_set_size(row, LV_PCT(100), 18);
   lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
@@ -151,51 +211,66 @@ static void create_segments(lv_obj_t *screen) {
 
   for (int i = 0; i < PEAK_DASHBOARD_SEGMENT_COUNT; i++) {
     s_view.segments[i] = lv_obj_create(row);
+    PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(s_view.segments[i]);
     lv_obj_remove_style_all(s_view.segments[i]);
     lv_obj_set_flex_grow(s_view.segments[i], 1);
     lv_obj_set_height(s_view.segments[i], 7);
     lv_obj_set_style_radius(s_view.segments[i], 4, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(s_view.segments[i], LV_OPA_COVER, LV_PART_MAIN);
   }
+
+  return ESP_OK;
 }
 
-static void create_info_cards(lv_obj_t *screen) {
+static esp_err_t create_info_cards(lv_obj_t *screen) {
   lv_obj_t *wide_row = lv_obj_create(screen);
+  PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(wide_row);
   lv_obj_remove_style_all(wide_row);
   lv_obj_set_size(wide_row, LV_PCT(100), PEAK_DASHBOARD_WIDE_CARD_HEIGHT);
   lv_obj_set_flex_flow(wide_row, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_gap(wide_row, 12, LV_PART_MAIN);
 
-  lv_obj_t *range = create_card(wide_row, 0, PEAK_DASHBOARD_WIDE_CARD_HEIGHT);
+  lv_obj_t *range = NULL;
+  PEAK_DASHBOARD_RETURN_ON_ERROR(
+      create_card(wide_row, 0, PEAK_DASHBOARD_WIDE_CARD_HEIGHT, &range));
   lv_obj_set_flex_grow(range, 1);
   lv_obj_set_flex_flow(range, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_gap(range, 18, LV_PART_MAIN);
-  create_label(range, "EST. RANGE", peak_ui_color_muted(),
-               PEAK_DASHBOARD_FONT_SMALL);
-  s_view.range_label =
-      create_label(range, "-- km", peak_ui_color_text(),
-                   PEAK_DASHBOARD_FONT_MEDIUM);
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      range, "EST. RANGE", peak_ui_color_muted(), PEAK_DASHBOARD_FONT_SMALL,
+      NULL));
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      range, "-- km", peak_ui_color_text(), PEAK_DASHBOARD_FONT_MEDIUM,
+      &s_view.range_label));
 
-  lv_obj_t *thermal =
-      create_card(wide_row, 0, PEAK_DASHBOARD_WIDE_CARD_HEIGHT);
+  lv_obj_t *thermal = NULL;
+  PEAK_DASHBOARD_RETURN_ON_ERROR(
+      create_card(wide_row, 0, PEAK_DASHBOARD_WIDE_CARD_HEIGHT, &thermal));
   lv_obj_set_flex_grow(thermal, 1);
   lv_obj_set_flex_flow(thermal, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_gap(thermal, 32, LV_PART_MAIN);
-  create_label(thermal, "THERMALS", peak_ui_color_warm(),
-               PEAK_DASHBOARD_FONT_SMALL);
-  s_view.thermal_label =
-      create_label(thermal, "M: --  C: --", peak_ui_color_text(),
-                   PEAK_DASHBOARD_FONT_SMALL);
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      thermal, "THERMALS", peak_ui_color_warm(), PEAK_DASHBOARD_FONT_SMALL,
+      NULL));
+  PEAK_DASHBOARD_RETURN_ON_ERROR(create_label(
+      thermal, "M: --  C: --", peak_ui_color_text(), PEAK_DASHBOARD_FONT_SMALL,
+      &s_view.thermal_label));
 
   lv_obj_t *small_row = lv_obj_create(screen);
+  PEAK_DASHBOARD_RETURN_NO_MEM_IF_NULL(small_row);
   lv_obj_remove_style_all(small_row);
   lv_obj_set_size(small_row, LV_PCT(100), PEAK_DASHBOARD_SMALL_CARD_HEIGHT);
   lv_obj_set_flex_flow(small_row, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_gap(small_row, 8, LV_PART_MAIN);
 
-  create_metric_card(small_row, "DIST KM", &s_view.distance_label);
-  create_metric_card(small_row, "TIME", &s_view.time_label);
-  create_metric_card(small_row, "AVG KM/H", &s_view.average_label);
+  PEAK_DASHBOARD_RETURN_ON_ERROR(
+      create_metric_card(small_row, "DIST KM", &s_view.distance_label));
+  PEAK_DASHBOARD_RETURN_ON_ERROR(
+      create_metric_card(small_row, "TIME", &s_view.time_label));
+  PEAK_DASHBOARD_RETURN_ON_ERROR(
+      create_metric_card(small_row, "AVG KM/H", &s_view.average_label));
+
+  return ESP_OK;
 }
 
 esp_err_t peak_dashboard_create(lv_obj_t *parent) {
@@ -211,16 +286,27 @@ esp_err_t peak_dashboard_create(lv_obj_t *parent) {
   lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_gap(parent, PEAK_DASHBOARD_ROOT_GAP, LV_PART_MAIN);
 
-  create_status_row(parent);
-  create_hero(parent);
-  create_segments(parent);
-  create_info_cards(parent);
+  esp_err_t err = create_status_row(parent);
+  if (err == ESP_OK) {
+    err = create_hero(parent);
+  }
+  if (err == ESP_OK) {
+    err = create_segments(parent);
+  }
+  if (err == ESP_OK) {
+    err = create_info_cards(parent);
+  }
+  if (err != ESP_OK) {
+    lv_obj_clean(parent);
+    s_view = (peak_dashboard_view_t){0};
+    return err;
+  }
 
   return ESP_OK;
 }
 
 void peak_dashboard_update(const peak_dashboard_data_t *data) {
-  if (data == NULL || s_view.screen == NULL) {
+  if (data == NULL || !view_ready()) {
     return;
   }
 
