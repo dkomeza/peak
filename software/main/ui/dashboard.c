@@ -5,9 +5,14 @@
 
 #define PEAK_DASHBOARD_SEGMENT_COUNT 5
 #define PEAK_DASHBOARD_ARC_MAX_KMH 50
+#define PEAK_DASHBOARD_ROOT_GAP 8
+#define PEAK_DASHBOARD_HERO_HEIGHT 286
+#define PEAK_DASHBOARD_ARC_SIZE 286
+#define PEAK_DASHBOARD_WIDE_CARD_HEIGHT 116
+#define PEAK_DASHBOARD_SMALL_CARD_HEIGHT 74
+#define PEAK_DASHBOARD_SPEED_SCALE 384
 #define PEAK_DASHBOARD_FONT_SMALL LV_FONT_DEFAULT
 #define PEAK_DASHBOARD_FONT_MEDIUM LV_FONT_DEFAULT
-#define PEAK_DASHBOARD_FONT_LARGE LV_FONT_DEFAULT
 
 typedef struct {
   lv_obj_t *screen;
@@ -43,15 +48,16 @@ static lv_obj_t *create_card(lv_obj_t *parent, int32_t width, int32_t height) {
   lv_obj_t *card = lv_obj_create(parent);
   peak_ui_style_card(card);
   lv_obj_set_size(card, width, height);
+  lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
   return card;
 }
 
 static lv_obj_t *create_metric_card(lv_obj_t *parent, const char *caption,
                                     lv_obj_t **value_out) {
-  lv_obj_t *card = create_card(parent, 0, 78);
+  lv_obj_t *card = create_card(parent, 0, PEAK_DASHBOARD_SMALL_CARD_HEIGHT);
   lv_obj_set_flex_grow(card, 1);
   lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_gap(card, 8, LV_PART_MAIN);
+  lv_obj_set_style_pad_gap(card, 6, LV_PART_MAIN);
 
   create_label(card, caption, peak_ui_color_muted(), PEAK_DASHBOARD_FONT_SMALL);
   *value_out =
@@ -69,6 +75,7 @@ static void create_status_row(lv_obj_t *screen) {
 
   lv_obj_t *status = lv_obj_create(row);
   peak_ui_style_pill(status);
+  lv_obj_clear_flag(status, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_size(status, 112, 36);
   s_view.status_label = create_label(status, "BT ACTIVE", peak_ui_color_text(),
                                      PEAK_DASHBOARD_FONT_SMALL);
@@ -76,6 +83,7 @@ static void create_status_row(lv_obj_t *screen) {
 
   lv_obj_t *battery = lv_obj_create(row);
   peak_ui_style_pill(battery);
+  lv_obj_clear_flag(battery, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_size(battery, 100, 36);
   s_view.battery_label = create_label(battery, "84% BAT",
                                       peak_ui_color_text(),
@@ -86,11 +94,12 @@ static void create_status_row(lv_obj_t *screen) {
 static void create_hero(lv_obj_t *screen) {
   lv_obj_t *hero = lv_obj_create(screen);
   lv_obj_remove_style_all(hero);
-  lv_obj_set_size(hero, LV_PCT(100), 300);
+  lv_obj_clear_flag(hero, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_size(hero, LV_PCT(100), PEAK_DASHBOARD_HERO_HEIGHT);
   lv_obj_set_style_pad_top(hero, 0, LV_PART_MAIN);
 
   s_view.arc = lv_arc_create(hero);
-  lv_obj_set_size(s_view.arc, 300, 300);
+  lv_obj_set_size(s_view.arc, PEAK_DASHBOARD_ARC_SIZE, PEAK_DASHBOARD_ARC_SIZE);
   lv_obj_align(s_view.arc, LV_ALIGN_TOP_MID, 0, 0);
   lv_arc_set_range(s_view.arc, 0, PEAK_DASHBOARD_ARC_MAX_KMH);
   lv_arc_set_value(s_view.arc, 0);
@@ -110,18 +119,23 @@ static void create_hero(lv_obj_t *screen) {
   lv_obj_align(s_view.mode_label, LV_ALIGN_TOP_MID, 0, 78);
 
   s_view.speed_label =
-      create_label(hero, "0", peak_ui_color_text(), PEAK_DASHBOARD_FONT_LARGE);
-  lv_obj_align(s_view.speed_label, LV_ALIGN_TOP_MID, -16, 106);
+      create_label(hero, "0", peak_ui_color_text(), PEAK_DASHBOARD_FONT_MEDIUM);
+  lv_obj_set_style_transform_scale(s_view.speed_label,
+                                   PEAK_DASHBOARD_SPEED_SCALE, LV_PART_MAIN);
+  lv_obj_set_style_transform_pivot_x(s_view.speed_label, 0, LV_PART_MAIN);
+  lv_obj_set_style_transform_pivot_y(s_view.speed_label, 0, LV_PART_MAIN);
+  lv_obj_align(s_view.speed_label, LV_ALIGN_TOP_MID, -28, 112);
 
   lv_obj_t *unit_label = create_label(hero, "km/h", peak_ui_color_muted(),
                                       PEAK_DASHBOARD_FONT_SMALL);
   lv_obj_align_to(unit_label, s_view.speed_label, LV_ALIGN_OUT_RIGHT_MID, 10,
-                  -4);
+                  2);
 
   lv_obj_t *power = lv_obj_create(hero);
   peak_ui_style_pill(power);
-  lv_obj_set_size(power, 176, 54);
-  lv_obj_align(power, LV_ALIGN_TOP_MID, 0, 214);
+  lv_obj_clear_flag(power, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_size(power, 176, 48);
+  lv_obj_align(power, LV_ALIGN_TOP_MID, 0, 212);
   s_view.power_label =
       create_label(power, "0 WATTS", peak_ui_color_text(),
                    PEAK_DASHBOARD_FONT_MEDIUM);
@@ -148,24 +162,25 @@ static void create_segments(lv_obj_t *screen) {
 static void create_info_cards(lv_obj_t *screen) {
   lv_obj_t *wide_row = lv_obj_create(screen);
   lv_obj_remove_style_all(wide_row);
-  lv_obj_set_size(wide_row, LV_PCT(100), 128);
+  lv_obj_set_size(wide_row, LV_PCT(100), PEAK_DASHBOARD_WIDE_CARD_HEIGHT);
   lv_obj_set_flex_flow(wide_row, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_gap(wide_row, 12, LV_PART_MAIN);
 
-  lv_obj_t *range = create_card(wide_row, 0, 128);
+  lv_obj_t *range = create_card(wide_row, 0, PEAK_DASHBOARD_WIDE_CARD_HEIGHT);
   lv_obj_set_flex_grow(range, 1);
   lv_obj_set_flex_flow(range, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_gap(range, 26, LV_PART_MAIN);
+  lv_obj_set_style_pad_gap(range, 18, LV_PART_MAIN);
   create_label(range, "EST. RANGE", peak_ui_color_muted(),
                PEAK_DASHBOARD_FONT_SMALL);
   s_view.range_label =
       create_label(range, "-- km", peak_ui_color_text(),
                    PEAK_DASHBOARD_FONT_MEDIUM);
 
-  lv_obj_t *thermal = create_card(wide_row, 0, 128);
+  lv_obj_t *thermal =
+      create_card(wide_row, 0, PEAK_DASHBOARD_WIDE_CARD_HEIGHT);
   lv_obj_set_flex_grow(thermal, 1);
   lv_obj_set_flex_flow(thermal, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_gap(thermal, 40, LV_PART_MAIN);
+  lv_obj_set_style_pad_gap(thermal, 32, LV_PART_MAIN);
   create_label(thermal, "THERMALS", peak_ui_color_warm(),
                PEAK_DASHBOARD_FONT_SMALL);
   s_view.thermal_label =
@@ -174,7 +189,7 @@ static void create_info_cards(lv_obj_t *screen) {
 
   lv_obj_t *small_row = lv_obj_create(screen);
   lv_obj_remove_style_all(small_row);
-  lv_obj_set_size(small_row, LV_PCT(100), 78);
+  lv_obj_set_size(small_row, LV_PCT(100), PEAK_DASHBOARD_SMALL_CARD_HEIGHT);
   lv_obj_set_flex_flow(small_row, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_gap(small_row, 8, LV_PART_MAIN);
 
@@ -192,8 +207,9 @@ esp_err_t peak_dashboard_create(lv_obj_t *parent) {
   s_view.screen = parent;
 
   peak_ui_style_screen(parent);
+  lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_gap(parent, 12, LV_PART_MAIN);
+  lv_obj_set_style_pad_gap(parent, PEAK_DASHBOARD_ROOT_GAP, LV_PART_MAIN);
 
   create_status_row(parent);
   create_hero(parent);
