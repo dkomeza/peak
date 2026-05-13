@@ -37,6 +37,16 @@ void esc_peak_parse_home_secondary(uint32_t id, const uint8_t *data,
   xSemaphoreGive(esc_peak_data_mutex);
 }
 
+void esc_peak_parse_home_main(uint32_t id, const uint8_t *data, uint8_t len,
+                              void *user_data) {
+  if (len != 8)
+    return;
+
+  xSemaphoreTake(esc_peak_data_mutex, portMAX_DELAY);
+
+  xSemaphoreGive(esc_peak_data_mutex);
+}
+
 void esc_peak_init(void) {
   can_register_cb(PEAK_CAN_ID | PEAK_PACKET_TYPE_HOME_MAIN << 8, 0xFFFF,
                   esc_peak_parse_home_main, NULL);
