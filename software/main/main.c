@@ -11,6 +11,7 @@
 // #include "boot/boot.h"
 #include "buttons.h"
 #include "connection/can.h"
+#include "display/display.h"
 #include "driver/i2c_master.h"
 
 #include "io/battery.h"
@@ -63,6 +64,7 @@ static void peak_app_task(void *arg) {
   nvs_init();
 
   buttons_init();
+  ESP_ERROR_CHECK(display_init());
 
   // boot_mode_t mode = boot(mountain_mode_callback);
 
