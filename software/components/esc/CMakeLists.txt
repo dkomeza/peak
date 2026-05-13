@@ -2,6 +2,7 @@
 idf_component_register(
     SRCS
         "kt.c"
+        "peak.c"
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES
@@ -9,4 +10,5 @@ idf_component_register(
         esp_driver_uart
         esp_timer
         freertos
+        connection
 )

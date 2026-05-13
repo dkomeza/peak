@@ -11,6 +11,7 @@
 // #include "boot/boot.h"
 #include "buttons.h"
 #include "connection/can.h"
+#include "display/display.h"
 #include "driver/i2c_master.h"
 
 #include "io/battery.h"
@@ -63,13 +64,14 @@ static void peak_app_task(void *arg) {
   nvs_init();
 
   buttons_init();
+  ESP_ERROR_CHECK(display_init());
 
   // boot_mode_t mode = boot(mountain_mode_callback);
 
   // ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
+  ESP_ERROR_CHECK(can_init());
   ESP_ERROR_CHECK(wifi_start_ap());
   ESP_ERROR_CHECK(ble_ota_start());
-  ESP_ERROR_CHECK(can_init());
 
   ESP_ERROR_CHECK(vesc_bridge_init());
   vesc_bridge_start(&transport_udp);
