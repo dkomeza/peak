@@ -5,5 +5,6 @@ idf_component_register(
         "src/loom_raster.c"
         "src/loom_backend_esp32p4.c"
     INCLUDE_DIRS "include"
-    PRIV_REQUIRES esp_lcd heap
+    REQUIRES esp_lcd
+    PRIV_REQUIRES heap
 )

@@ -63,18 +63,18 @@ typedef struct {
 } loom_display_config_t;
 
 static inline loom_color_t loom_rgb(uint8_t r, uint8_t g, uint8_t b) {
-  loom_color_t color = {.r = r, .g = g, .b = b, .a = 255};
+  loom_color_t color = {r, g, b, 255};
   return color;
 }
 
 static inline loom_color_t loom_rgba(uint8_t r, uint8_t g, uint8_t b,
                                      uint8_t a) {
-  loom_color_t color = {.r = r, .g = g, .b = b, .a = a};
+  loom_color_t color = {r, g, b, a};
   return color;
 }
 
 static inline loom_rect_t loom_rect(int x, int y, int w, int h) {
-  loom_rect_t rect = {.x = x, .y = y, .w = w, .h = h};
+  loom_rect_t rect = {x, y, w, h};
   return rect;
 }
 
