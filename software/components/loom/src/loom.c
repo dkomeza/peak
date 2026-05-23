@@ -172,7 +172,7 @@ esp_err_t loom_end_frame(loom_t *loom) {
     int tile_h = remaining < loom->config.tile_height
                      ? remaining
                      : loom->config.tile_height;
-    loom_rect_t tile_rect = loom_rect(0, y, loom->config.width, tile_h);
+    loom_rect_t tile_rect = loom_rect(dirty.x, y, dirty.w, tile_h);
     uint8_t *tile = loom->tile_buffers[buffer_index];
 
     ret = loom_render_tile(loom, tile, tile_rect);

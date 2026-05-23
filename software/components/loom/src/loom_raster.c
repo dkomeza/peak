@@ -64,9 +64,12 @@ static uint8_t loom_blend_channel(uint8_t src, uint8_t dst, uint8_t alpha) {
 
 static uint8_t *loom_tile_pixel(uint8_t *tile, const loom_t *loom,
                                 loom_rect_t tile_rect, int x, int y) {
+  (void)loom;
   size_t local_y = (size_t)(y - tile_rect.y);
-  return tile + local_y * loom->tile_stride +
-         (size_t)x * LOOM_RGB888_BYTES_PER_PIXEL;
+  size_t local_x = (size_t)(x - tile_rect.x);
+  size_t compact_stride = (size_t)tile_rect.w * LOOM_RGB888_BYTES_PER_PIXEL;
+  return tile + local_y * compact_stride +
+         local_x * LOOM_RGB888_BYTES_PER_PIXEL;
 }
 
 static void loom_write_pixel(uint8_t *tile, const loom_t *loom,
@@ -539,9 +542,7 @@ esp_err_t loom_render_tile(loom_t *loom, uint8_t *tile, loom_rect_t tile_rect) {
 
   size_t row_bytes = (size_t)tile_rect.w * LOOM_RGB888_BYTES_PER_PIXEL;
   for (int y = 0; y < tile_rect.h; ++y) {
-    memset(tile + (size_t)y * loom->tile_stride +
-               (size_t)tile_rect.x * LOOM_RGB888_BYTES_PER_PIXEL,
-           0, row_bytes);
+    memset(tile + (size_t)y * row_bytes, 0, row_bytes);
   }
 
   for (size_t i = 0; i < loom->command_count; ++i) {
