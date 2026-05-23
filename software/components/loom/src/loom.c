@@ -3,7 +3,25 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "esp_attr.h"
 #include "esp_heap_caps.h"
+#include "esp_lcd_mipi_dsi.h"
+
+static bool IRAM_ATTR loom_color_trans_done_cb(
+    esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata,
+    void *user_ctx) {
+  (void)panel;
+  (void)edata;
+
+  loom_t *loom = (loom_t *)user_ctx;
+  if (loom == NULL || loom->trans_done_sem == NULL) {
+    return false;
+  }
+
+  BaseType_t need_yield = pdFALSE;
+  xSemaphoreGiveFromISR(loom->trans_done_sem, &need_yield);
+  return need_yield == pdTRUE;
+}
 
 static uint16_t loom_default_tile_height(uint16_t height) {
   uint16_t tile_height = height / 10;
@@ -24,6 +42,11 @@ static void loom_free_allocations(loom_t *loom) {
 
   heap_caps_free(loom->commands);
   loom->commands = NULL;
+
+  if (loom->trans_done_sem != NULL) {
+    vSemaphoreDelete(loom->trans_done_sem);
+    loom->trans_done_sem = NULL;
+  }
 }
 
 static uint8_t *loom_alloc_tile_buffer(size_t bytes) {
@@ -76,6 +99,13 @@ esp_err_t loom_create(const loom_display_config_t *config, loom_t **out_loom) {
     loom_destroy(loom);
     return ESP_ERR_INVALID_ARG;
   }
+
+  loom->trans_done_sem = xSemaphoreCreateBinary();
+  if (loom->trans_done_sem == NULL) {
+    loom_destroy(loom);
+    return ESP_ERR_NO_MEM;
+  }
+
   loom->config.buffer_count = config->buffer_count >= 2 ? 2 : 1;
   loom->config.command_capacity = config->command_capacity > 0
                                       ? config->command_capacity
@@ -106,6 +136,16 @@ esp_err_t loom_create(const loom_display_config_t *config, loom_t **out_loom) {
       loom_destroy(loom);
       return ESP_ERR_NO_MEM;
     }
+  }
+
+  esp_lcd_dpi_panel_event_callbacks_t callbacks = {
+      .on_color_trans_done = loom_color_trans_done_cb,
+  };
+  esp_err_t ret = esp_lcd_dpi_panel_register_event_callbacks(
+      loom->config.panel, &callbacks, loom);
+  if (ret != ESP_OK) {
+    loom_destroy(loom);
+    return ret;
   }
 
   *out_loom = loom;

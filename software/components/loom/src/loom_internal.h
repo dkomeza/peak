@@ -6,6 +6,8 @@
 #include <stdint.h>
 
 #include "esp_err.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "loom/loom.h"
 
 #ifdef __cplusplus
@@ -86,6 +88,7 @@ struct loom {
   uint8_t buffer_count;
   size_t tile_stride;
   size_t tile_bytes;
+  SemaphoreHandle_t trans_done_sem;
 };
 
 esp_err_t loom_command_append(loom_t *loom, const loom_command_t *command);

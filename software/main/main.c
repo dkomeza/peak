@@ -17,6 +17,8 @@
 #include "io/ltr329.h"
 #include "io/t117.h"
 
+#include "display/display.h"
+
 #include "vesc/vesc_bridge.h"
 
 #include "wireless/ble_bridge.h"
@@ -84,6 +86,8 @@ static void peak_app_task(void *arg) {
   buttons_on(BTN_UP, BTN_EVENT_CLICK, button_up_pressed);
   buttons_on(BTN_POWER, BTN_EVENT_CLICK, button_power_pressed);
   buttons_on(BTN_DOWN, BTN_EVENT_CLICK, button_down_pressed);
+
+  ESP_ERROR_CHECK(display_init());
 
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(1000));

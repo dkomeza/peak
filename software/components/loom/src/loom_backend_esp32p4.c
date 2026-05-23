@@ -5,11 +5,23 @@
 esp_err_t loom_backend_flush(loom_t *loom, const uint8_t *tile,
                              loom_rect_t tile_rect) {
   if (loom == NULL || tile == NULL || loom->config.panel == NULL ||
-      loom_rect_is_empty(tile_rect)) {
+      loom->trans_done_sem == NULL || loom_rect_is_empty(tile_rect)) {
     return ESP_ERR_INVALID_ARG;
   }
 
-  return esp_lcd_panel_draw_bitmap(loom->config.panel, tile_rect.x,
-                                   tile_rect.y, tile_rect.x + tile_rect.w,
-                                   tile_rect.y + tile_rect.h, tile);
+  while (xSemaphoreTake(loom->trans_done_sem, 0) == pdTRUE) {
+  }
+
+  esp_err_t ret = esp_lcd_panel_draw_bitmap(
+      loom->config.panel, tile_rect.x, tile_rect.y, tile_rect.x + tile_rect.w,
+      tile_rect.y + tile_rect.h, tile);
+  if (ret != ESP_OK) {
+    return ret;
+  }
+
+  if (xSemaphoreTake(loom->trans_done_sem, portMAX_DELAY) != pdTRUE) {
+    return ESP_ERR_TIMEOUT;
+  }
+
+  return ESP_OK;
 }
