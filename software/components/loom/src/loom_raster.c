@@ -17,6 +17,10 @@ static int loom_min_int(int a, int b) { return a < b ? a : b; }
 
 static int loom_max_int(int a, int b) { return a > b ? a : b; }
 
+static int64_t loom_abs_i64(int64_t value) {
+  return value < 0 ? -value : value;
+}
+
 static int64_t loom_rect_right64(loom_rect_t rect) {
   return (int64_t)rect.x + (int64_t)rect.w;
 }
@@ -250,32 +254,94 @@ static void loom_draw_brush(uint8_t *tile, const loom_t *loom,
   }
 }
 
+static bool loom_clip_line_to_rect(loom_point_t p0, loom_point_t p1,
+                                   loom_rect_t clip, uint16_t brush_width,
+                                   int64_t *out_x0, int64_t *out_y0,
+                                   int64_t *out_x1, int64_t *out_y1) {
+  if (loom_rect_is_empty(clip) || brush_width == 0 || out_x0 == NULL ||
+      out_y0 == NULL || out_x1 == NULL || out_y1 == NULL) {
+    return false;
+  }
+
+  double x0 = p0.x;
+  double y0 = p0.y;
+  double dx = (double)p1.x - (double)p0.x;
+  double dy = (double)p1.y - (double)p0.y;
+  double t0 = 0.0;
+  double t1 = 1.0;
+  double half = (double)(brush_width / 2u);
+  double left = (double)clip.x - half;
+  double top = (double)clip.y - half;
+  double right = (double)clip.x + (double)clip.w - 1.0 + half;
+  double bottom = (double)clip.y + (double)clip.h - 1.0 + half;
+  const double p[4] = {-dx, dx, -dy, dy};
+  const double q[4] = {x0 - left, right - x0, y0 - top, bottom - y0};
+
+  for (int i = 0; i < 4; ++i) {
+    if (p[i] == 0.0) {
+      if (q[i] < 0.0) {
+        return false;
+      }
+      continue;
+    }
+
+    double t = q[i] / p[i];
+    if (p[i] < 0.0) {
+      if (t > t1) {
+        return false;
+      }
+      if (t > t0) {
+        t0 = t;
+      }
+    } else {
+      if (t < t0) {
+        return false;
+      }
+      if (t < t1) {
+        t1 = t;
+      }
+    }
+  }
+
+  *out_x0 = (int64_t)llround(x0 + t0 * dx);
+  *out_y0 = (int64_t)llround(y0 + t0 * dy);
+  *out_x1 = (int64_t)llround(x0 + t1 * dx);
+  *out_y1 = (int64_t)llround(y0 + t1 * dy);
+  return *out_x0 >= INT_MIN && *out_x0 <= INT_MAX && *out_y0 >= INT_MIN &&
+         *out_y0 <= INT_MAX && *out_x1 >= INT_MIN && *out_x1 <= INT_MAX &&
+         *out_y1 >= INT_MIN && *out_y1 <= INT_MAX;
+}
+
 static void loom_raster_draw_line(uint8_t *tile, const loom_t *loom,
                                   loom_rect_t tile_rect, loom_point_t p0,
                                   loom_point_t p1, loom_stroke_t stroke,
                                   loom_rect_t clip) {
-  int x0 = p0.x;
-  int y0 = p0.y;
-  int x1 = p1.x;
-  int y1 = p1.y;
-  int dx = loom_abs_int(x1 - x0);
-  int sx = x0 < x1 ? 1 : -1;
-  int dy = -loom_abs_int(y1 - y0);
-  int sy = y0 < y1 ? 1 : -1;
-  int err = dx + dy;
+  int64_t x0 = 0;
+  int64_t y0 = 0;
+  int64_t x1 = 0;
+  int64_t y1 = 0;
+  if (!loom_clip_line_to_rect(p0, p1, clip, stroke.width, &x0, &y0, &x1, &y1)) {
+    return;
+  }
+
+  int64_t dx = loom_abs_i64(x1 - x0);
+  int64_t sx = x0 < x1 ? 1 : -1;
+  int64_t dy = -loom_abs_i64(y1 - y0);
+  int64_t sy = y0 < y1 ? 1 : -1;
+  int64_t err = dx + dy;
 
   for (;;) {
-    loom_draw_brush(tile, loom, tile_rect, x0, y0, stroke.width, clip,
+    loom_draw_brush(tile, loom, tile_rect, (int)x0, (int)y0, stroke.width, clip,
                     stroke.color);
     if (x0 == x1 && y0 == y1) {
       break;
     }
-    int e2 = err * 2;
-    if (e2 >= dy) {
+    int64_t old_err = err;
+    if (old_err >= dy - old_err) {
       err += dy;
       x0 += sx;
     }
-    if (e2 <= dx) {
+    if (old_err <= dx - old_err) {
       err += dx;
       y0 += sy;
     }
