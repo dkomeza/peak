@@ -6,6 +6,10 @@
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_mipi_dsi.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+
+static const char *TAG = "loom";
 
 static bool IRAM_ATTR loom_color_trans_done_cb(
     esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata,
@@ -198,45 +202,42 @@ esp_err_t loom_end_frame(loom_t *loom) {
     return ESP_ERR_INVALID_STATE;
   }
 
+  int64_t start_us = esp_timer_get_time();
   esp_err_t ret = loom->sticky_error;
-  if (ret != ESP_OK) {
-    loom_release_frame_texts(loom);
-    loom->in_frame = false;
-    return ret;
-  }
+  if (ret == ESP_OK) {
+    loom_rect_t dirty =
+        loom->dirty_valid ? loom->dirty : loom_screen_rect(loom);
+    dirty = loom_clip_to_screen(loom, dirty);
 
-  loom_rect_t dirty = loom->dirty_valid ? loom->dirty : loom_screen_rect(loom);
-  dirty = loom_clip_to_screen(loom, dirty);
-  if (loom_rect_is_empty(dirty)) {
-    loom_release_frame_texts(loom);
-    loom->in_frame = false;
-    return ESP_OK;
-  }
+    int dirty_bottom = dirty.y + dirty.h;
+    uint8_t buffer_index = 0;
+    for (int y = dirty.y; !loom_rect_is_empty(dirty) && y < dirty_bottom;
+         y += loom->config.tile_height) {
+      int remaining = dirty_bottom - y;
+      int tile_h = remaining < loom->config.tile_height
+                       ? remaining
+                       : loom->config.tile_height;
+      loom_rect_t tile_rect = loom_rect(dirty.x, y, dirty.w, tile_h);
+      uint8_t *tile = loom->tile_buffers[buffer_index];
 
-  int dirty_bottom = dirty.y + dirty.h;
-  uint8_t buffer_index = 0;
-  for (int y = dirty.y; y < dirty_bottom; y += loom->config.tile_height) {
-    int remaining = dirty_bottom - y;
-    int tile_h = remaining < loom->config.tile_height
-                     ? remaining
-                     : loom->config.tile_height;
-    loom_rect_t tile_rect = loom_rect(dirty.x, y, dirty.w, tile_h);
-    uint8_t *tile = loom->tile_buffers[buffer_index];
+      ret = loom_render_tile(loom, tile, tile_rect);
+      if (ret != ESP_OK) {
+        break;
+      }
 
-    ret = loom_render_tile(loom, tile, tile_rect);
-    if (ret != ESP_OK) {
-      break;
+      ret = loom_backend_flush(loom, tile, tile_rect);
+      if (ret != ESP_OK) {
+        break;
+      }
+
+      buffer_index = (uint8_t)((buffer_index + 1) % loom->buffer_count);
     }
-
-    ret = loom_backend_flush(loom, tile, tile_rect);
-    if (ret != ESP_OK) {
-      break;
-    }
-
-    buffer_index = (uint8_t)((buffer_index + 1) % loom->buffer_count);
   }
 
   loom_release_frame_texts(loom);
   loom->in_frame = false;
+  int64_t elapsed_us = esp_timer_get_time() - start_us;
+  ESP_LOGD(TAG, "rendered %u commands in %lld us",
+           (unsigned)loom->command_count, (long long)elapsed_us);
   return ret;
 }

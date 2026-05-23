@@ -6,5 +6,5 @@ idf_component_register(
         "src/loom_backend_esp32p4.c"
     INCLUDE_DIRS "include"
     REQUIRES esp_lcd
-    PRIV_REQUIRES heap
+    PRIV_REQUIRES heap esp_timer
 )
