@@ -190,13 +190,11 @@ esp_err_t loom_command_append(loom_t *loom, const loom_command_t *command) {
   loom_rect_t clipped_bounds;
   loom_rect_intersect(stored.bounds, stored.clip, &clipped_bounds);
   clipped_bounds = loom_clip_to_screen(loom, clipped_bounds);
-  if (loom_rect_is_empty(clipped_bounds)) {
-    loom->sticky_error = ESP_ERR_INVALID_ARG;
-    return loom->sticky_error;
-  }
 
   loom->commands[loom->command_count++] = stored;
-  loom_union_dirty(loom, clipped_bounds);
+  if (!loom_rect_is_empty(clipped_bounds)) {
+    loom_union_dirty(loom, clipped_bounds);
+  }
 
   return ESP_OK;
 }
