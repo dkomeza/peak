@@ -33,6 +33,13 @@ static void loom_free_allocations(loom_t *loom) {
     return;
   }
 
+  if (loom->panel_callbacks_registered && loom->config.panel != NULL) {
+    esp_lcd_dpi_panel_event_callbacks_t callbacks = {0};
+    esp_lcd_dpi_panel_register_event_callbacks(loom->config.panel, &callbacks,
+                                               NULL);
+    loom->panel_callbacks_registered = false;
+  }
+
   loom_release_frame_texts(loom);
 
   for (uint8_t i = 0; i < 2; ++i) {
@@ -147,6 +154,7 @@ esp_err_t loom_create(const loom_display_config_t *config, loom_t **out_loom) {
     loom_destroy(loom);
     return ret;
   }
+  loom->panel_callbacks_registered = true;
 
   *out_loom = loom;
   return ESP_OK;

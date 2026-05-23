@@ -11,6 +11,15 @@ extern "C" {
 
 typedef struct loom loom_t;
 
+/**
+ * Create a loom renderer for a DPI panel.
+ *
+ * The ESP32-P4 backend registers DPI panel transfer callbacks while the
+ * renderer is alive so it can wait until draw buffers are safe to reuse.
+ * Callers should not register competing DPI callbacks on the same panel during
+ * the renderer lifetime. loom_destroy() clears the callbacks before releasing
+ * renderer resources.
+ */
 esp_err_t loom_create(const loom_display_config_t *config, loom_t **out_loom);
 void loom_destroy(loom_t *loom);
 

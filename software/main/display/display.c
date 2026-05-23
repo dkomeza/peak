@@ -1,15 +1,11 @@
 #include "driver/gpio.h"
-#include "esp_heap_caps.h"
+#include "esp_check.h"
 #include "esp_lcd_mipi_dsi.h"
-#include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_st7701.h"
 #include "esp_ldo_regulator.h"
 #include "esp_log.h"
-#include "lvgl.h"
-#include "tick/lv_tick.h"
-#include <esp_timer.h>
-#include <string.h>
+#include "loom/loom.h"
 
 static const char *TAG = "PEAK";
 
@@ -102,8 +98,7 @@ static const st7701_lcd_init_cmd_t init_cmds[] = {
 };
 
 esp_lcd_panel_handle_t init(void) {
-  // Power up VDD_MIPI_DPHY via LDO channel 3 (2.5V).
-  // Must happen before esp_lcd_new_dsi_bus() or the PHY PLL never locks.
+  // LDO Power
   esp_ldo_channel_handle_t ldo_mipi_phy = NULL;
   esp_ldo_channel_config_t ldo_cfg = {
       .chan_id = 3,
@@ -134,21 +129,18 @@ esp_lcd_panel_handle_t init(void) {
   ESP_LOGI(TAG, "DBI panel IO created successfully!");
 
   // 3. DPI panel configuration
-  // Timing values are typical defaults for 480x640 @ ~60fps.
-  // HFP/HBP/HSYNC and VFP/VBP/VSYNC may need tuning for your specific panel.
-  // GPIO 39 (TE) is available for vsync-locked updates; not used in this test.
   esp_lcd_dpi_panel_config_t dpi_cfg = {
       .virtual_channel = 0,
       .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
-      .dpi_clock_freq_mhz = 20, // Matches manufacturer RGB_CLOCK
-      .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB888, // 24-bit
+      .dpi_clock_freq_mhz = 20,
+      .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB888,
       .video_timing =
           {
               .h_size = 480,
               .v_size = 640,
               .hsync_pulse_width = 2,
-              .hsync_back_porch = 12,
-              .hsync_front_porch = 8,
+              .hsync_back_porch = 6,
+              .hsync_front_porch = 14,
               .vsync_pulse_width = 2,
               .vsync_back_porch = 12,
               .vsync_front_porch = 8,
@@ -157,8 +149,6 @@ esp_lcd_panel_handle_t init(void) {
   };
 
   // 4. ST7701 vendor config — for MIPI mode, dsi_bus and dpi_config
-  //    must be set so the driver can create the DPI panel internally.
-  //    esp_lcd_new_panel_st7701() returns the DPI panel handle.
   st7701_vendor_config_t vendor_cfg = {
       .init_cmds = init_cmds,
       .init_cmds_size = sizeof(init_cmds) / sizeof(init_cmds[0]),
@@ -180,8 +170,6 @@ esp_lcd_panel_handle_t init(void) {
       .vendor_config = &vendor_cfg,
   };
 
-  // esp_lcd_new_panel_st7701() with use_mipi_interface=1 calls the MIPI
-  // variant internally, which creates the DPI panel and returns its handle.
   esp_lcd_panel_handle_t dpi_panel;
   ESP_ERROR_CHECK(esp_lcd_new_panel_st7701(dbi_io, &panel_dev_cfg, &dpi_panel));
   ESP_LOGI(TAG, "ST7701 panel created successfully!");
@@ -197,60 +185,50 @@ esp_lcd_panel_handle_t init(void) {
   return dpi_panel;
 }
 
-uint32_t my_get_millis() { return (uint32_t)(esp_timer_get_time() / 1000); }
-
-static bool notify_lvgl_flush_ready(esp_lcd_panel_handle_t panel,
-                                    esp_lcd_dpi_panel_event_data_t *edata,
-                                    void *user_ctx) {
-  lv_display_t *disp = (lv_display_t *)user_ctx;
-  lv_display_flush_ready(disp);
-  return false;
-}
-void my_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_buf) {
-  /* Show the rendered image on the display */
-  esp_lcd_panel_draw_bitmap(dpi_panel, area->x1, area->y1, area->x2 + 1,
-                            area->y2 + 1, px_buf);
-}
-
-static void lvgl_task(void *arg) {
-  while (1) {
-    uint32_t time_till_next = lv_timer_handler();
-    // TickType_t delay_ticks = pdMS_TO_TICKS(time_till_next);
-    // if (delay_ticks == 0) {
-    //   delay_ticks = 1;
-    // }
-    vTaskDelay(5);
-  }
-}
-
-void display_init() {
-  dpi_panel = init();
-
-  lv_init();
-  lv_tick_set_cb((lv_tick_get_cb_t)my_get_millis);
-
-  lv_display_t *disp = lv_display_create(480, 640);
-  lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB888);
-  lv_display_set_flush_cb(disp, my_flush_cb);
-
-  esp_lcd_dpi_panel_event_callbacks_t cbs = {
-      .on_color_trans_done = notify_lvgl_flush_ready,
+static esp_err_t display_demo(void) {
+  loom_display_config_t cfg = {
+      .width = 480,
+      .height = 640,
+      .format = LOOM_PIXEL_FORMAT_RGB888,
+      .tile_height = 64,
+      .buffer_count = 2,
+      .command_capacity = 128,
+      .panel = dpi_panel,
   };
 
-  // Note: Use the specific DSI/DPI registration function if available in your
-  // IDF version
-  esp_lcd_dpi_panel_register_event_callbacks(dpi_panel, &cbs, disp);
+  loom_t *gfx = NULL;
+  ESP_RETURN_ON_ERROR(loom_create(&cfg, &gfx), TAG, "create loom");
 
-  size_t draw_buffer_sz = 480 * 128 * 3; // 1/10 screen size, 3 bytes per pixel
-  void *buf1 = heap_caps_aligned_alloc(64, draw_buffer_sz, MALLOC_CAP_INTERNAL);
-  if (!buf1) {
-    buf1 = heap_caps_aligned_alloc(64, draw_buffer_sz, MALLOC_CAP_SPIRAM);
+  esp_err_t ret = loom_begin_frame(gfx);
+  if (ret == ESP_OK) {
+    ret = loom_clear(gfx, loom_rgb(8, 10, 12));
   }
-  void *buf2 = heap_caps_aligned_alloc(64, draw_buffer_sz, MALLOC_CAP_INTERNAL);
-  if (!buf2) {
-    buf2 = heap_caps_aligned_alloc(64, draw_buffer_sz, MALLOC_CAP_SPIRAM);
+  if (ret == ESP_OK) {
+    ret = loom_fill_rect(gfx, loom_rect(24, 24, 432, 96),
+                         loom_rgb(20, 48, 70));
   }
+  if (ret == ESP_OK) {
+    ret = loom_fill_round_rect(gfx, loom_rect(48, 152, 384, 120), 24,
+                               loom_rgb(220, 235, 245));
+  }
+  loom_stroke_t stroke = {.width = 4, .color = loom_rgb(255, 196, 72)};
+  if (ret == ESP_OK) {
+    ret = loom_stroke_rect(gfx, loom_rect(72, 308, 336, 96), &stroke);
+  }
+  if (ret == ESP_OK) {
+    ret = loom_draw_line(gfx, (loom_point_t){32, 600},
+                         (loom_point_t){448, 456}, &stroke);
+  }
+  if (ret == ESP_OK) {
+    ret = loom_end_frame(gfx);
+  }
+  loom_destroy(gfx);
+  return ret;
+}
 
-  lv_display_set_buffers(disp, buf1, buf2, draw_buffer_sz,
-                         LV_DISPLAY_RENDER_MODE_PARTIAL);
+esp_err_t display_init(void) {
+  dpi_panel = init();
+
+  ESP_RETURN_ON_ERROR(display_demo(), TAG, "draw loom demo");
+  return ESP_OK;
 }

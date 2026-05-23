@@ -89,6 +89,7 @@ struct loom {
   size_t tile_stride;
   size_t tile_bytes;
   SemaphoreHandle_t trans_done_sem;
+  bool panel_callbacks_registered;
 };
 
 esp_err_t loom_command_append(loom_t *loom, const loom_command_t *command);
