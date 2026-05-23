@@ -1,5 +1,6 @@
 #include "loom_internal.h"
 
+#include <stdint.h>
 #include <string.h>
 
 #include "esp_heap_caps.h"
@@ -13,6 +14,8 @@ static void loom_free_allocations(loom_t *loom) {
   if (loom == NULL) {
     return;
   }
+
+  loom_release_frame_texts(loom);
 
   for (uint8_t i = 0; i < 2; ++i) {
     heap_caps_free(loom->tile_buffers[i]);
@@ -35,6 +38,18 @@ static uint8_t *loom_alloc_tile_buffer(size_t bytes) {
   return heap_caps_aligned_alloc(LOOM_TILE_ALIGNMENT, bytes, spiram_caps);
 }
 
+static bool loom_mul_size_checked(size_t a, size_t b, size_t *out) {
+  if (out == NULL) {
+    return false;
+  }
+  if (a != 0 && b > SIZE_MAX / a) {
+    return false;
+  }
+
+  *out = a * b;
+  return true;
+}
+
 esp_err_t loom_create(const loom_display_config_t *config, loom_t **out_loom) {
   if (config == NULL || out_loom == NULL || config->panel == NULL ||
       config->width == 0 || config->height == 0) {
@@ -47,7 +62,8 @@ esp_err_t loom_create(const loom_display_config_t *config, loom_t **out_loom) {
     return ESP_ERR_NOT_SUPPORTED;
   }
 
-  loom_t *loom = heap_caps_calloc(1, sizeof(*loom), MALLOC_CAP_INTERNAL);
+  loom_t *loom = heap_caps_calloc(1, sizeof(*loom),
+                                  MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   if (loom == NULL) {
     return ESP_ERR_NO_MEM;
   }
@@ -55,6 +71,10 @@ esp_err_t loom_create(const loom_display_config_t *config, loom_t **out_loom) {
   loom->config = *config;
   if (loom->config.tile_height == 0) {
     loom->config.tile_height = loom_default_tile_height(config->height);
+  }
+  if (loom->config.tile_height == 0) {
+    loom_destroy(loom);
+    return ESP_ERR_INVALID_ARG;
   }
   loom->config.buffer_count = config->buffer_count >= 2 ? 2 : 1;
   loom->config.command_capacity = config->command_capacity > 0
@@ -64,15 +84,21 @@ esp_err_t loom_create(const loom_display_config_t *config, loom_t **out_loom) {
   loom->command_capacity = loom->config.command_capacity;
   loom->commands = heap_caps_calloc(loom->command_capacity,
                                     sizeof(loom->commands[0]),
-                                    MALLOC_CAP_INTERNAL);
+                                    MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   if (loom->commands == NULL) {
     loom_destroy(loom);
     return ESP_ERR_NO_MEM;
   }
 
   loom->buffer_count = loom->config.buffer_count;
-  loom->tile_stride = (size_t)loom->config.width * LOOM_RGB888_BYTES_PER_PIXEL;
-  loom->tile_bytes = loom->tile_stride * loom->config.tile_height;
+  if (!loom_mul_size_checked(loom->config.width, LOOM_RGB888_BYTES_PER_PIXEL,
+                             &loom->tile_stride) ||
+      !loom_mul_size_checked(loom->tile_stride, loom->config.tile_height,
+                             &loom->tile_bytes) ||
+      loom->tile_stride == 0 || loom->tile_bytes == 0) {
+    loom_destroy(loom);
+    return ESP_ERR_INVALID_ARG;
+  }
 
   for (uint8_t i = 0; i < loom->buffer_count; ++i) {
     loom->tile_buffers[i] = loom_alloc_tile_buffer(loom->tile_bytes);
@@ -104,6 +130,7 @@ esp_err_t loom_begin_frame(loom_t *loom) {
     return ESP_ERR_INVALID_STATE;
   }
 
+  loom_release_frame_texts(loom);
   loom->command_count = 0;
   loom->clip_stack[0] = loom_screen_rect(loom);
   loom->clip_depth = 1;
@@ -125,6 +152,7 @@ esp_err_t loom_end_frame(loom_t *loom) {
 
   esp_err_t ret = loom->sticky_error;
   if (ret != ESP_OK) {
+    loom_release_frame_texts(loom);
     loom->in_frame = false;
     return ret;
   }
@@ -132,6 +160,7 @@ esp_err_t loom_end_frame(loom_t *loom) {
   loom_rect_t dirty = loom->dirty_valid ? loom->dirty : loom_screen_rect(loom);
   dirty = loom_clip_to_screen(loom, dirty);
   if (loom_rect_is_empty(dirty)) {
+    loom_release_frame_texts(loom);
     loom->in_frame = false;
     return ESP_OK;
   }
@@ -159,6 +188,7 @@ esp_err_t loom_end_frame(loom_t *loom) {
     buffer_index = (uint8_t)((buffer_index + 1) % loom->buffer_count);
   }
 
+  loom_release_frame_texts(loom);
   loom->in_frame = false;
   return ret;
 }

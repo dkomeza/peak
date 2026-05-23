@@ -37,7 +37,7 @@ typedef struct {
 
 typedef struct {
   const loom_font_t *font;
-  const char *text;
+  char *text;
   int x;
   int y;
   loom_text_style_t style;
@@ -89,6 +89,7 @@ struct loom {
 };
 
 esp_err_t loom_command_append(loom_t *loom, const loom_command_t *command);
+void loom_release_frame_texts(loom_t *loom);
 
 loom_rect_t loom_current_clip(const loom_t *loom);
 loom_rect_t loom_screen_rect(const loom_t *loom);
