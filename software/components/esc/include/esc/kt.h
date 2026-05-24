@@ -1,6 +1,7 @@
 #ifndef ESC_KT_H
 #define ESC_KT_H
 
+#include "esc/controller.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -29,6 +30,7 @@ typedef struct {
 
 typedef struct {
   uint8_t assist_level;
+  esc_ride_mode_t ride_mode;
   bool light;
 
   // Basic settings
@@ -56,6 +58,11 @@ typedef struct {
  * Initializes the ESC KT module.
  * Starts both the the receive and send tasks */
 void esc_kt_init(void);
+
+/**
+ * Initializes a caller-owned KT controller command handle.
+ */
+esp_err_t esc_kt_controller_init(esc_controller_t *out);
 
 /**
  * Gets the latest data received from the ESC.

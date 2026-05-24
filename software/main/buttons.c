@@ -1,18 +1,23 @@
 #include "buttons.h"
 #include "io/button.h"
+#include "esp_log.h"
 #include "freertos/idf_additions.h"
 #include <stdbool.h>
 
-#define BTN_UP_PIN 6
+#define BTN_UP_PIN 8
 #define BTN_POWER_PIN 7
-#define BTN_DOWN_PIN 8
+#define BTN_DOWN_PIN 6
 
+static const char *TAG = "buttons";
 static bool initialized = false;
 volatile button_state_t *buttons[3];
 
 void buttons_task(void *arg);
 
 void buttons_init(void) {
+  ESP_LOGI(TAG, "Initializing buttons: UP=GPIO%d POWER=GPIO%d DOWN=GPIO%d",
+           BTN_UP_PIN, BTN_POWER_PIN, BTN_DOWN_PIN);
+
   buttons[BTN_UP] = button_init(BTN_UP_PIN);
   buttons[BTN_POWER] = button_init(BTN_POWER_PIN);
   buttons[BTN_DOWN] = button_init(BTN_DOWN_PIN);
