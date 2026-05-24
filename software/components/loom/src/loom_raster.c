@@ -11,6 +11,12 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#define LOOM_PPA_FILL_MIN_PIXELS 1024
+
+static size_t loom_align_up_size(size_t value, size_t alignment) {
+  return (value + alignment - 1u) & ~(alignment - 1u);
+}
+
 static int loom_abs_int(int value) { return value < 0 ? -value : value; }
 
 static int loom_min_int(int a, int b) { return a < b ? a : b; }
@@ -72,6 +78,76 @@ static uint8_t *loom_tile_pixel(uint8_t *tile, const loom_t *loom,
          local_x * LOOM_RGB888_BYTES_PER_PIXEL;
 }
 
+static void loom_store_rgb888_run(uint8_t *dst, size_t pixels,
+                                  loom_color_t color) {
+  if (pixels == 0) {
+    return;
+  }
+
+  if (color.r == color.g && color.g == color.b) {
+    memset(dst, color.r, pixels * LOOM_RGB888_BYTES_PER_PIXEL);
+    return;
+  }
+
+  uint8_t pattern[12] = {
+      color.r, color.g, color.b, color.r, color.g, color.b,
+      color.r, color.g, color.b, color.r, color.g, color.b,
+  };
+  uint32_t pattern32[3];
+  memcpy(pattern32, pattern, sizeof(pattern32));
+
+  while (((uintptr_t)dst & (sizeof(uint32_t) - 1)) != 0 && pixels > 0) {
+    dst[0] = color.r;
+    dst[1] = color.g;
+    dst[2] = color.b;
+    dst += LOOM_RGB888_BYTES_PER_PIXEL;
+    pixels--;
+  }
+
+  uint32_t *dst32 = (uint32_t *)dst;
+  while (pixels >= 4) {
+    dst32[0] = pattern32[0];
+    dst32[1] = pattern32[1];
+    dst32[2] = pattern32[2];
+    dst32 += 3;
+    pixels -= 4;
+  }
+
+  dst = (uint8_t *)dst32;
+  while (pixels > 0) {
+    dst[0] = color.r;
+    dst[1] = color.g;
+    dst[2] = color.b;
+    dst += LOOM_RGB888_BYTES_PER_PIXEL;
+    pixels--;
+  }
+}
+
+static void loom_clear_tile(uint8_t *tile, loom_rect_t tile_rect,
+                            loom_color_t color) {
+  size_t row_bytes = (size_t)tile_rect.w * LOOM_RGB888_BYTES_PER_PIXEL;
+
+  for (int y = 0; y < tile_rect.h; ++y) {
+    loom_store_rgb888_run(tile + (size_t)y * row_bytes, tile_rect.w, color);
+  }
+}
+
+static bool loom_clear_covers_tile(const loom_command_t *command,
+                                   loom_rect_t tile_rect) {
+  if (command == NULL || command->type != LOOM_CMD_CLEAR ||
+      command->data.shape.color.a != 255) {
+    return false;
+  }
+
+  loom_rect_t covered;
+  if (!loom_rect_intersect(tile_rect, command->clip, &covered)) {
+    return false;
+  }
+
+  return covered.x == tile_rect.x && covered.y == tile_rect.y &&
+         covered.w == tile_rect.w && covered.h == tile_rect.h;
+}
+
 static void loom_write_pixel(uint8_t *tile, const loom_t *loom,
                              loom_rect_t tile_rect, int x, int y,
                              loom_color_t color) {
@@ -101,12 +177,7 @@ static void loom_fill_span(uint8_t *tile, const loom_t *loom,
 
   uint8_t *dst = loom_tile_pixel(tile, loom, tile_rect, x0, y);
   if (color.a == 255) {
-    for (int x = x0; x < x1; ++x) {
-      dst[0] = color.r;
-      dst[1] = color.g;
-      dst[2] = color.b;
-      dst += LOOM_RGB888_BYTES_PER_PIXEL;
-    }
+    loom_store_rgb888_run(dst, (size_t)(x1 - x0), color);
     return;
   }
 
@@ -121,6 +192,37 @@ static void loom_fill_span(uint8_t *tile, const loom_t *loom,
 static void loom_fill_rect_clipped(uint8_t *tile, const loom_t *loom,
                                    loom_rect_t tile_rect, loom_rect_t rect,
                                    loom_color_t color) {
+  if (color.a == 255 && loom != NULL && loom->ppa_fill_client != NULL &&
+      rect.w > 0 && rect.h > 0 &&
+      (uint32_t)rect.w * (uint32_t)rect.h >= LOOM_PPA_FILL_MIN_PIXELS) {
+    size_t pixel_bytes =
+        (size_t)tile_rect.w * (size_t)tile_rect.h * LOOM_RGB888_BYTES_PER_PIXEL;
+    size_t buffer_size = loom_align_up_size(pixel_bytes, LOOM_TILE_ALIGNMENT);
+    if (buffer_size <= loom->tile_bytes) {
+      ppa_fill_oper_config_t config = {
+          .out.buffer = tile,
+          .out.buffer_size = buffer_size,
+          .out.pic_w = (uint32_t)tile_rect.w,
+          .out.pic_h = (uint32_t)tile_rect.h,
+          .out.block_offset_x = (uint32_t)(rect.x - tile_rect.x),
+          .out.block_offset_y = (uint32_t)(rect.y - tile_rect.y),
+          .out.fill_cm = PPA_FILL_COLOR_MODE_RGB888,
+          .fill_block_w = (uint32_t)rect.w,
+          .fill_block_h = (uint32_t)rect.h,
+          .fill_argb_color = {
+              .a = color.a,
+              .r = color.b,
+              .g = color.g,
+              .b = color.r,
+          },
+          .mode = PPA_TRANS_MODE_BLOCKING,
+      };
+      if (ppa_do_fill(loom->ppa_fill_client, &config) == ESP_OK) {
+        return;
+      }
+    }
+  }
+
   for (int y = rect.y; y < rect.y + rect.h; ++y) {
     loom_fill_span(tile, loom, tile_rect, y, rect.x, rect.x + rect.w, color);
   }
@@ -160,21 +262,28 @@ static void loom_raster_fill_round_rect(uint8_t *tile, const loom_t *loom,
   }
 
   int r = loom_min_int(radius, loom_min_int(rect.w, rect.h) / 2);
+  if (r <= 0) {
+    loom_fill_rect_clipped(tile, loom, tile_rect, visible, color);
+    return;
+  }
+
+  int64_t radius_sq = (int64_t)r * (int64_t)r;
   for (int y = visible.y; y < visible.y + visible.h; ++y) {
-    int run_start = -1;
-    for (int x = visible.x; x < visible.x + visible.w; ++x) {
-      if (loom_point_in_round_rect(x, y, rect, r)) {
-        if (run_start < 0) {
-          run_start = x;
-        }
-      } else if (run_start >= 0) {
-        loom_fill_span(tile, loom, tile_rect, y, run_start, x, color);
-        run_start = -1;
+    int inset = 0;
+    if (y < rect.y + r || y >= rect.y + rect.h - r) {
+      int cy = y < rect.y + r ? rect.y + r - 1 : rect.y + rect.h - r;
+      int64_t dy = (int64_t)y - (int64_t)cy;
+      int dx = r;
+      while (dx > 0 && (int64_t)dx * (int64_t)dx + dy * dy > radius_sq) {
+        --dx;
       }
+      inset = loom_max_int(0, r - 1 - dx);
     }
-    if (run_start >= 0) {
-      loom_fill_span(tile, loom, tile_rect, y, run_start, visible.x + visible.w,
-                     color);
+
+    int x0 = loom_max_int(visible.x, rect.x + inset);
+    int x1 = loom_min_int(visible.x + visible.w, rect.x + rect.w - inset);
+    if (x1 > x0) {
+      loom_fill_span(tile, loom, tile_rect, y, x0, x1, color);
     }
   }
 }
@@ -191,16 +300,45 @@ static void loom_raster_stroke_rect(uint8_t *tile, const loom_t *loom,
   int inner_amount = (int)width - outer_amount;
   loom_rect_t outer = loom_rect_inset(rect, -outer_amount);
   loom_rect_t inner = loom_rect_inset(rect, inner_amount);
-  for (int y = clip.y; y < clip.y + clip.h; ++y) {
-    for (int x = clip.x; x < clip.x + clip.w; ++x) {
-      bool in_outer = x >= outer.x && y >= outer.y && x < outer.x + outer.w &&
-                      y < outer.y + outer.h;
-      bool in_inner = !loom_rect_is_empty(inner) && x >= inner.x &&
-                      y >= inner.y && x < inner.x + inner.w &&
-                      y < inner.y + inner.h;
-      if (in_outer && !in_inner) {
-        loom_write_pixel(tile, loom, tile_rect, x, y, color);
-      }
+
+  loom_rect_t top;
+  if (loom_rect_intersect(outer, loom_rect(outer.x, outer.y, outer.w,
+                                           inner.y - outer.y),
+                          &top) &&
+      loom_rect_intersect(top, clip, &top)) {
+    loom_fill_rect_clipped(tile, loom, tile_rect, top, color);
+  }
+
+  loom_rect_t bottom_band =
+      loom_rect(outer.x, inner.y + inner.h, outer.w,
+                outer.y + outer.h - (inner.y + inner.h));
+  loom_rect_t bottom;
+  if (loom_rect_intersect(outer, bottom_band, &bottom) &&
+      loom_rect_intersect(bottom, clip, &bottom)) {
+    loom_fill_rect_clipped(tile, loom, tile_rect, bottom, color);
+  }
+
+  loom_rect_t left_band =
+      loom_rect(outer.x, inner.y, inner.x - outer.x, inner.h);
+  loom_rect_t left;
+  if (loom_rect_intersect(outer, left_band, &left) &&
+      loom_rect_intersect(left, clip, &left)) {
+    loom_fill_rect_clipped(tile, loom, tile_rect, left, color);
+  }
+
+  loom_rect_t right_band =
+      loom_rect(inner.x + inner.w, inner.y,
+                outer.x + outer.w - (inner.x + inner.w), inner.h);
+  loom_rect_t right;
+  if (loom_rect_intersect(outer, right_band, &right) &&
+      loom_rect_intersect(right, clip, &right)) {
+    loom_fill_rect_clipped(tile, loom, tile_rect, right, color);
+  }
+
+  if (loom_rect_is_empty(inner)) {
+    loom_rect_t visible;
+    if (loom_rect_intersect(outer, clip, &visible)) {
+      loom_fill_rect_clipped(tile, loom, tile_rect, visible, color);
     }
   }
 }
@@ -540,12 +678,16 @@ esp_err_t loom_render_tile(loom_t *loom, uint8_t *tile, loom_rect_t tile_rect) {
     return ESP_ERR_INVALID_ARG;
   }
 
-  size_t row_bytes = (size_t)tile_rect.w * LOOM_RGB888_BYTES_PER_PIXEL;
-  for (int y = 0; y < tile_rect.h; ++y) {
-    memset(tile + (size_t)y * row_bytes, 0, row_bytes);
+  size_t first_command = 0;
+  if (loom->command_count > 0 &&
+      loom_clear_covers_tile(&loom->commands[0], tile_rect)) {
+    loom_clear_tile(tile, tile_rect, loom->commands[0].data.shape.color);
+    first_command = 1;
+  } else {
+    loom_clear_tile(tile, tile_rect, loom_rgb(0, 0, 0));
   }
 
-  for (size_t i = 0; i < loom->command_count; ++i) {
+  for (size_t i = first_command; i < loom->command_count; ++i) {
     const loom_command_t *command = &loom->commands[i];
     loom_rect_t visible;
     if (!loom_intersect_command(command, tile_rect, &visible)) {

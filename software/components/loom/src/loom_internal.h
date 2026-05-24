@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "driver/ppa.h"
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -85,9 +86,11 @@ struct loom {
   bool in_frame;
   esp_err_t sticky_error;
   uint8_t *tile_buffers[2];
+  bool tile_buffers_internal[2];
   uint8_t buffer_count;
   size_t tile_stride;
   size_t tile_bytes;
+  ppa_client_handle_t ppa_fill_client;
   SemaphoreHandle_t trans_done_sem;
   bool panel_callbacks_registered;
 };
@@ -103,6 +106,9 @@ bool loom_rect_is_empty(loom_rect_t rect);
 loom_rect_t loom_clip_to_screen(const loom_t *loom, loom_rect_t rect);
 
 esp_err_t loom_render_tile(loom_t *loom, uint8_t *tile, loom_rect_t tile_rect);
+esp_err_t loom_backend_flush_start(loom_t *loom, const uint8_t *tile,
+                                   loom_rect_t tile_rect);
+esp_err_t loom_backend_flush_wait(loom_t *loom);
 esp_err_t loom_backend_flush(loom_t *loom, const uint8_t *tile,
                              loom_rect_t tile_rect);
 
