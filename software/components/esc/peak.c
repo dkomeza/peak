@@ -22,7 +22,7 @@ static bool esc_peak_ensure_data_mutex(void) {
 }
 
 static uint32_t esc_peak_packet_base_id(void) {
-  return (uint32_t)PEAK_CAN_ID << 8;
+  return (uint32_t)CYCLEIQ_CAN_ID << 8;
 }
 
 static uint32_t esc_peak_command_id(cycleiq_command_t command) {
@@ -193,7 +193,7 @@ void esc_peak_parse_data(uint32_t id, const uint8_t *data, uint8_t len,
 void esc_peak_init(void) {
   esc_peak_ensure_data_mutex();
 
-  can_register_cb(CYCLEIQ_CAN_ID << 8, 0xFF00, esc_peak_parse_data, NULL);
+  can_register_cb(PEAK_CAN_ID << 8, 0xFF00, esc_peak_parse_data, NULL);
 }
 
 esp_err_t esc_peak_controller_init(esc_controller_t *out) {
