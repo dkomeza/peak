@@ -2,14 +2,22 @@
 #include "hal/gpio_types.h"
 
 #include <driver/gpio.h>
+#include <esp_log.h>
 #include <esp_timer.h>
 #include <stdlib.h>
 
 #define DEBOUNCE_TIME_MS 20     // Time to wait for signal to stabilize
 #define LONG_PRESS_TIME_MS 1000 // 1 second for a long press
 
+static const char *TAG = "button";
+
 button_state_t *button_init(int pin) {
   button_state_t *btn = calloc(1, sizeof(button_state_t));
+  if (!btn) {
+    ESP_LOGE(TAG, "Failed to allocate button state for GPIO%d", pin);
+    return NULL;
+  }
+
   btn->pin = pin;
 
   gpio_config_t io_conf = {
@@ -31,8 +39,8 @@ button_state_t *button_init(int pin) {
   return btn;
 }
 
-volatile callback_t *event_type_to_callback(btn_event_type_t event_type,
-                                            volatile button_state_t *btn) {
+static volatile callback_t *event_type_to_callback(btn_event_type_t event_type,
+                                                   volatile button_state_t *btn) {
   switch (event_type) {
   case BTN_EVENT_DOWN:
     return &btn->on_down;
@@ -49,17 +57,26 @@ volatile callback_t *event_type_to_callback(btn_event_type_t event_type,
   }
 }
 
-bool is_button_event_active(btn_event_type_t event_type,
-                            volatile button_state_t *btn) {
+static bool is_button_event_active(btn_event_type_t event_type,
+                                   volatile button_state_t *btn) {
   return (btn->pause_mask & event_type) == 0;
 }
 
-volatile callback_t *get_active_callback(btn_event_type_t event_type,
-                                         volatile button_state_t *btn) {
+static callback_t get_active_callback(btn_event_type_t event_type,
+                                      volatile button_state_t *btn) {
   if (!is_button_event_active(event_type, btn))
     return NULL;
 
-  return event_type_to_callback(event_type, btn);
+  volatile callback_t *cb_ptr = event_type_to_callback(event_type, btn);
+  return cb_ptr != NULL ? *cb_ptr : NULL;
+}
+
+static void dispatch_button_event(btn_event_type_t event_type,
+                                  volatile button_state_t *btn) {
+  callback_t callback = get_active_callback(event_type, btn);
+  if (callback != NULL) {
+    callback();
+  }
 }
 
 bool button_is_pressed(volatile button_state_t *btn) {
@@ -137,8 +154,7 @@ void button_update(volatile button_state_t *btn) {
       btn->state = BTN_STATE_PRESS;
       btn->state_time_ms = now_ms;
 
-      if (get_active_callback(BTN_EVENT_DOWN, btn))
-        btn->on_down();
+      dispatch_button_event(BTN_EVENT_DOWN, btn);
     }
     break;
 
@@ -146,16 +162,13 @@ void button_update(volatile button_state_t *btn) {
     if (!is_pressed) {
       btn->state = BTN_STATE_IDLE;
 
-      if (get_active_callback(BTN_EVENT_UP, btn))
-        btn->on_up();
-      if (get_active_callback(BTN_EVENT_CLICK, btn))
-        btn->on_click();
+      dispatch_button_event(BTN_EVENT_UP, btn);
+      dispatch_button_event(BTN_EVENT_CLICK, btn);
 
     } else if ((now_ms - btn->state_time_ms) >= LONG_PRESS_TIME_MS) {
       btn->state = BTN_STATE_LONG_PRESS;
 
-      if (get_active_callback(BTN_EVENT_LONG_PRESS_START, btn))
-        btn->on_long_press_start();
+      dispatch_button_event(BTN_EVENT_LONG_PRESS_START, btn);
     }
     break;
 
@@ -163,10 +176,8 @@ void button_update(volatile button_state_t *btn) {
     if (!is_pressed) {
       btn->state = BTN_STATE_IDLE;
 
-      if (get_active_callback(BTN_EVENT_UP, btn))
-        btn->on_up();
-      if (get_active_callback(BTN_EVENT_LONG_PRESS_END, btn))
-        btn->on_long_press_end();
+      dispatch_button_event(BTN_EVENT_UP, btn);
+      dispatch_button_event(BTN_EVENT_LONG_PRESS_END, btn);
     }
     break;
 
