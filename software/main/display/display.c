@@ -5,6 +5,8 @@
 #include "esp_lcd_st7701.h"
 #include "esp_ldo_regulator.h"
 #include "esp_log.h"
+#include "freertos/idf_additions.h"
+#include "loom/fonts.h"
 #include "loom/loom.h"
 
 static const char *TAG = "PEAK";
@@ -165,7 +167,7 @@ esp_lcd_panel_handle_t init(void) {
   };
   esp_lcd_panel_dev_config_t panel_dev_cfg = {
       .reset_gpio_num = 40, // RST pin
-      .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+      .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
       .bits_per_pixel = 24,
       .vendor_config = &vendor_cfg,
   };
@@ -186,26 +188,39 @@ esp_lcd_panel_handle_t init(void) {
 }
 
 static esp_err_t display_demo(void) {
-  loom_display_config_t cfg = {
-      .width = 480,
-      .height = 640,
-      .format = LOOM_PIXEL_FORMAT_RGB888,
-      .tile_height = 64,
-      .buffer_count = 2,
-      .command_capacity = 128,
-      .panel = dpi_panel,
-  };
+  static loom_t *gfx = NULL;
+  if (gfx == NULL) {
+    loom_display_config_t cfg = {
+        .width = 480,
+        .height = 640,
+        .format = LOOM_PIXEL_FORMAT_RGB888,
+        .tile_height = 64,
+        .buffer_count = 2,
+        .command_capacity = 128,
+        .panel = dpi_panel,
+    };
 
-  loom_t *gfx = NULL;
-  ESP_RETURN_ON_ERROR(loom_create(&cfg, &gfx), TAG, "create loom");
+    ESP_RETURN_ON_ERROR(loom_create(&cfg, &gfx), TAG, "create loom");
+  }
 
   esp_err_t ret = loom_begin_frame(gfx);
-  if (ret == ESP_OK) {
-    ret = loom_clear(gfx, loom_rgb(8, 10, 12));
+  if (ret != ESP_OK) {
+    return ret;
   }
+
+  ret = loom_clear(gfx, loom_rgb(8, 10, 12));
   if (ret == ESP_OK) {
-    ret = loom_fill_rect(gfx, loom_rect(24, 24, 432, 96),
-                         loom_rgb(20, 48, 70));
+    ret =
+        loom_fill_rect(gfx, loom_rect(24, 24, 432, 96), loom_rgb(20, 48, 255));
+  }
+  loom_text_style_t title_style = {
+      .color = loom_rgb(255, 255, 255),
+      .opacity = 255,
+      .size_px = 16,
+  };
+  if (ret == ESP_OK) {
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_16, "loom: RGB888 + text",
+                         40, 55, &title_style);
   }
   if (ret == ESP_OK) {
     ret = loom_fill_round_rect(gfx, loom_rect(48, 152, 384, 120), 24,
@@ -216,19 +231,26 @@ static esp_err_t display_demo(void) {
     ret = loom_stroke_rect(gfx, loom_rect(72, 308, 336, 96), &stroke);
   }
   if (ret == ESP_OK) {
-    ret = loom_draw_line(gfx, (loom_point_t){32, 600},
-                         (loom_point_t){448, 456}, &stroke);
+    ret = loom_draw_line(gfx, (loom_point_t){32, 600}, (loom_point_t){448, 456},
+                         &stroke);
   }
-  if (ret == ESP_OK) {
-    ret = loom_end_frame(gfx);
+
+  esp_err_t end_ret = loom_end_frame(gfx);
+  return ret != ESP_OK ? ret : end_ret;
+}
+
+void display_task(void *arg) {
+
+  for (;;) {
+    display_demo();
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
-  loom_destroy(gfx);
-  return ret;
 }
 
 esp_err_t display_init(void) {
   dpi_panel = init();
 
-  ESP_RETURN_ON_ERROR(display_demo(), TAG, "draw loom demo");
+  xTaskCreate(display_task, "display_task", 4096, NULL, 5, NULL);
+
   return ESP_OK;
 }
