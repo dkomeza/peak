@@ -1,6 +1,7 @@
 
 idf_component_register(
     SRCS
+        "controller.c"
         "kt.c"
         "peak.c"
     INCLUDE_DIRS

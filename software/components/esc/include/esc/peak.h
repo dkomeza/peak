@@ -1,17 +1,18 @@
 #ifndef ESC_PEAK_H
 #define ESC_PEAK_H
 
+#include "esc/controller.h"
 #include <stdint.h>
 
 typedef enum {
-  CYCLEIQ_MODE_PAS = 0,
-  CYCLEIQ_MODE_TORQUE,
-  CYCLEIQ_MODE_HYBRID,
+  CYCLEIQ_MODE_PAS = ESC_SUPPORT_MODE_PAS,
+  CYCLEIQ_MODE_TORQUE = ESC_SUPPORT_MODE_TORQUE,
+  CYCLEIQ_MODE_HYBRID = ESC_SUPPORT_MODE_HYBRID,
 } cycleiq_support_mode_t;
 
 typedef enum {
-  CYCLEIQ_RIDE_MODE_NORMAL = 0,
-  CYCLEIQ_RIDE_MODE_MOUNTAIN,
+  CYCLEIQ_RIDE_MODE_NORMAL = ESC_RIDE_MODE_NORMAL,
+  CYCLEIQ_RIDE_MODE_MOUNTAIN = ESC_RIDE_MODE_MOUNTAIN,
 } cycleiq_ride_mode_t;
 
 typedef struct {
@@ -48,6 +49,11 @@ typedef struct {
  * Initializes the ESC Peak module.
  */
 void esc_peak_init(void);
+
+/**
+ * Initializes a caller-owned PEAK controller command handle.
+ */
+esp_err_t esc_peak_controller_init(esc_controller_t *out);
 
 /**
  * Gets the latest data received from the ESC.
