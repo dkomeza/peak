@@ -6,6 +6,8 @@ idf_component_register(
         "peak.c"
     INCLUDE_DIRS
         "include"
+    REQUIRES
+        cycleiq_protocol
     PRIV_REQUIRES
         esp_driver_gpio
         esp_driver_uart
