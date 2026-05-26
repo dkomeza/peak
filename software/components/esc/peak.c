@@ -199,6 +199,12 @@ static void esc_peak_parse_protocol_version(const cycleiq_frame_t *frame) {
            local_protocol.minor, local_protocol.patch);
 }
 
+static bool esc_peak_is_config_packet(peak_packet_type_t packet_type) {
+  return packet_type == PEAK_PACKET_TYPE_CONFIG_FIELD ||
+         packet_type == PEAK_PACKET_TYPE_CONFIG_SNAPSHOT ||
+         packet_type == PEAK_PACKET_TYPE_CONFIG_ACK;
+}
+
 void esc_peak_parse_data(uint32_t id, const uint8_t *data, uint8_t len,
                          void *user_data) {
   (void)user_data;
@@ -213,6 +219,10 @@ void esc_peak_parse_data(uint32_t id, const uint8_t *data, uint8_t len,
       (peak_packet_type_t)cycleiq_frame_type(&frame);
   if (packet_type == PEAK_PACKET_TYPE_PROTOCOL_VERSION) {
     esc_peak_parse_protocol_version(&frame);
+    return;
+  }
+
+  if (esc_peak_is_config_packet(packet_type)) {
     return;
   }
 
