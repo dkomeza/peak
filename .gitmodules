@@ -1,3 +1,6 @@
 [submodule "software/esp-hosted-mcu"]
 	path = software/esp-hosted-mcu
 	url = https://github.com/espressif/esp-hosted-mcu
+[submodule "software/components/cycleiq_protocol"]
+	path = software/components/cycleiq_protocol
+	url = git@github.com:CycleIQ/cycleiq-protocol.git

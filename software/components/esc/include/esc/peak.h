@@ -1,19 +1,9 @@
 #ifndef ESC_PEAK_H
 #define ESC_PEAK_H
 
+#include "cycleiq_protocol.h"
 #include "esc/controller.h"
 #include <stdint.h>
-
-typedef enum {
-  CYCLEIQ_MODE_PAS = ESC_SUPPORT_MODE_PAS,
-  CYCLEIQ_MODE_TORQUE = ESC_SUPPORT_MODE_TORQUE,
-  CYCLEIQ_MODE_HYBRID = ESC_SUPPORT_MODE_HYBRID,
-} cycleiq_support_mode_t;
-
-typedef enum {
-  CYCLEIQ_RIDE_MODE_NORMAL = ESC_RIDE_MODE_NORMAL,
-  CYCLEIQ_RIDE_MODE_MOUNTAIN = ESC_RIDE_MODE_MOUNTAIN,
-} cycleiq_ride_mode_t;
 
 typedef struct {
   // Battery data
