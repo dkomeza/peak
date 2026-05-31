@@ -24,7 +24,7 @@ dependencies:
       type: service
     version: 1.1.5
   espressif/esp_hosted:
-    component_hash: a424e4cf8de13b657d09f14dbd615cc946cffdc3f032509915d3058f4637fa72
+    component_hash: 037d55a70dc5e2699754c0f3e21427d0df4ff29dc89cc80746978ad5b9dc4589
     dependencies:
     - name: idf
       require: private
@@ -32,7 +32,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 2.12.7
+    version: 2.12.8
   espressif/esp_lcd_st7701:
     component_hash: d412b3a8704b32b6025aeabf6b3d769eefb9aefb2a3c07baf7cf4a13874c43f0
     dependencies:
@@ -103,6 +103,6 @@ direct_dependencies:
 - espressif/esp_lcd_st7701
 - espressif/esp_wifi_remote
 - idf
-manifest_hash: e9fd2fc6ad7db224df9540f1599b656d34ac80bd57e0c20936bf96636e2ba8e0
+manifest_hash: 8641e546914de7a3418791e12c71926fd8186ca757454232482eb24126d9d2d9
 target: esp32p4
 version: 2.0.0
