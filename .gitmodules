@@ -4,3 +4,6 @@
 [submodule "software/components/cycleiq_protocol"]
 	path = software/components/cycleiq_protocol
 	url = git@github.com:CycleIQ/cycleiq-protocol.git
+[submodule "software/components/loom"]
+	path = software/components/loom
+	url = git@github.com:dkomeza/loom.git

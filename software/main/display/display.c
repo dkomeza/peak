@@ -11,6 +11,7 @@
 #include "freertos/idf_additions.h"
 #include "loom/fonts.h"
 #include "loom/loom.h"
+#include "loom/loom_esp_idf.h"
 #include <stdio.h>
 
 static const char *TAG = "PEAK";
@@ -263,8 +264,9 @@ esp_lcd_panel_handle_t init(void) {
 
 static esp_err_t display_demo(void) {
   static loom_t *gfx = NULL;
+  static loom_esp_idf_t *gfx_backend = NULL;
   if (gfx == NULL) {
-    loom_display_config_t cfg = {
+    loom_esp_idf_config_t cfg = {
         .width = 480,
         .height = 640,
         .format = LOOM_PIXEL_FORMAT_RGB888,
@@ -274,12 +276,13 @@ static esp_err_t display_demo(void) {
         .panel = dpi_panel,
     };
 
-    ESP_RETURN_ON_ERROR(loom_create(&cfg, &gfx), TAG, "create loom");
+    ESP_RETURN_ON_ERROR(loom_esp_idf_create(&cfg, &gfx_backend, &gfx), TAG,
+                        "create loom");
   }
 
-  esp_err_t ret = loom_begin_frame(gfx);
-  if (ret != ESP_OK) {
-    return ret;
+  loom_err_t ret = loom_begin_frame(gfx);
+  if (ret != LOOM_OK) {
+    return loom_err_to_esp_err(ret);
   }
 
   esc_peak_data_t data;
@@ -309,7 +312,7 @@ static esp_err_t display_demo(void) {
       .opacity = 255,
       .size_px = 144,
   };
-  if (ret == ESP_OK) {
+  if (ret == LOOM_OK) {
     ret = loom_draw_text(gfx, &loom_font_noto_sans_digits_144, speed_text,
                          centered_x(&loom_font_noto_sans_digits_144,
                                     speed_text),
@@ -321,7 +324,7 @@ static esp_err_t display_demo(void) {
       .opacity = 255,
       .size_px = 96,
   };
-  if (ret == ESP_OK) {
+  if (ret == LOOM_OK) {
     ret = loom_draw_text(gfx, &loom_font_noto_sans_digits_96, gear_text,
                          centered_x(&loom_font_noto_sans_digits_96, gear_text),
                          310, &gear_style);
@@ -332,7 +335,7 @@ static esp_err_t display_demo(void) {
       .opacity = 255,
       .size_px = 32,
   };
-  if (ret == ESP_OK) {
+  if (ret == LOOM_OK) {
     const char *support_text = support_mode_text(data.support_mode);
     ret = loom_draw_text(gfx, &loom_font_noto_sans_32, support_text,
                          centered_x(&loom_font_noto_sans_32, support_text),
@@ -344,21 +347,21 @@ static esp_err_t display_demo(void) {
       .opacity = 255,
       .size_px = 32,
   };
-  if (ret == ESP_OK) {
+  if (ret == LOOM_OK) {
     ret = loom_draw_text(gfx, &loom_font_noto_sans_32, voltage_text,
                          right_aligned_x(&loom_font_noto_sans_32, voltage_text,
                                          456),
                          28, &small_style);
   }
-  if (ret == ESP_OK) {
+  if (ret == LOOM_OK) {
     ret = loom_draw_text(gfx, &loom_font_noto_sans_32, motor_temp_text, 24, 552,
                          &small_style);
   }
-  if (ret == ESP_OK) {
+  if (ret == LOOM_OK) {
     ret = loom_draw_text(gfx, &loom_font_noto_sans_32, controller_temp_text, 24,
                          586, &small_style);
   }
-  if (ret == ESP_OK) {
+  if (ret == LOOM_OK) {
     ret = loom_draw_text(gfx, &loom_font_noto_sans_32, power_text,
                          right_aligned_x(&loom_font_noto_sans_32, power_text,
                                          456),
@@ -375,7 +378,7 @@ static esp_err_t display_demo(void) {
   taskEXIT_CRITICAL(&s_button_event_lock);
 
   uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-  if (ret == ESP_OK && button_event != DISPLAY_BUTTON_EVENT_NONE &&
+  if (ret == LOOM_OK && button_event != DISPLAY_BUTTON_EVENT_NONE &&
       now_ms < button_event_until_ms) {
     const char *event_text = button_event_text(button_event, button_event_error);
     loom_text_style_t button_style = {
@@ -389,8 +392,8 @@ static esp_err_t display_demo(void) {
                          &button_style);
   }
 
-  esp_err_t end_ret = loom_end_frame(gfx);
-  return ret != ESP_OK ? ret : end_ret;
+  loom_err_t end_ret = loom_end_frame(gfx);
+  return loom_err_to_esp_err(ret != LOOM_OK ? ret : end_ret);
 }
 
 void display_task(void *arg) {
