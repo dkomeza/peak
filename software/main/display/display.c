@@ -12,9 +12,17 @@
 #include "loom/fonts.h"
 #include "loom/loom.h"
 #include "loom/loom_esp_idf.h"
+#include "loom_benchmark.h"
 #include <stdio.h>
 
 static const char *TAG = "PEAK";
+#define DISPLAY_WIDTH 480
+#define DISPLAY_HEIGHT 640
+#define DISPLAY_SPEED_MAX_KPH 50
+#define DISPLAY_ASSIST_MAX 6
+#define DISPLAY_POWER_MAX_W 1200
+#define DISPLAY_TEMP_MAX_C 100
+
 static portMUX_TYPE s_button_event_lock = portMUX_INITIALIZER_UNLOCKED;
 static display_button_event_t s_button_event = DISPLAY_BUTTON_EVENT_NONE;
 static bool s_button_event_error = false;
@@ -133,12 +141,40 @@ static int text_width(const loom_font_t *font, const char *text) {
 }
 
 static int centered_x(const loom_font_t *font, const char *text) {
-  return (480 - text_width(font, text)) / 2;
+  return (DISPLAY_WIDTH - text_width(font, text)) / 2;
 }
 
 static int right_aligned_x(const loom_font_t *font, const char *text,
                            int right) {
   return right - text_width(font, text);
+}
+
+static int centered_in_rect_x(const loom_font_t *font, const char *text,
+                              loom_rect_t rect) {
+  return rect.x + (rect.w - text_width(font, text)) / 2;
+}
+
+static int clamp_int(int value, int min, int max) {
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+}
+
+static uint8_t clamp_u8(uint8_t value, uint8_t max) {
+  return value > max ? max : value;
+}
+
+static int percent_to_sweep(int value, int max, int sweep_max) {
+  if (max <= 0) {
+    return 0;
+  }
+
+  int clamped = clamp_int(value, 0, max);
+  return (clamped * sweep_max) / max;
 }
 
 static const char *support_mode_text(cycleiq_support_mode_t mode) {
@@ -162,6 +198,351 @@ static const char *button_event_text(display_button_event_t event,
   default:
     return "";
   }
+}
+
+static loom_err_t display_draw_background(loom_t *gfx) {
+  loom_err_t ret = loom_clear(gfx, loom_rgb(4, 6, 9));
+  if (ret != LOOM_OK) {
+    return ret;
+  }
+
+  loom_linear_gradient_t gradient = {
+      .p0 = {0, 0},
+      .p1 = {0, DISPLAY_HEIGHT},
+      .color0 = loom_rgb(10, 18, 24),
+      .color1 = loom_rgb(2, 5, 8),
+  };
+  return loom_fill_rect_linear_gradient(
+      gfx, loom_rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT), &gradient);
+}
+
+static loom_err_t display_draw_speed_gauge(loom_t *gfx,
+                                           const esc_peak_data_t *data,
+                                           const char *speed_text) {
+  loom_point_t center = {DISPLAY_WIDTH / 2, 218};
+  loom_stroke_t track = {
+      .width = 16,
+      .color = loom_rgba(255, 255, 255, 32),
+  };
+  loom_err_t ret = loom_draw_arc(gfx, center, 172, 150, 240, &track);
+
+  int speed = (int)(data->speed + 0.5f);
+  int sweep = percent_to_sweep(speed, DISPLAY_SPEED_MAX_KPH, 240);
+  if (ret == LOOM_OK && sweep > 0) {
+    loom_stroke_t stroke = {
+        .width = 18,
+        .color = loom_rgb(255, 255, 255),
+    };
+    loom_arc_gradient_t gradient = {
+        .mode = LOOM_ARC_GRADIENT_SWEEP,
+        .color0 = loom_rgb(86, 190, 255),
+        .color1 = mode_color(data->ride_mode),
+    };
+    ret = loom_draw_arc_gradient(gfx, center, 172, 150, sweep, &stroke,
+                                 &gradient);
+  }
+
+  loom_radial_gradient_t glow = {
+      .center = center,
+      .radius = 118,
+      .color0 = loom_rgba(60, 130, 170, 58),
+      .color1 = loom_rgba(0, 0, 0, 0),
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_fill_circle_radial_gradient(gfx, center, 118, &glow);
+  }
+
+  loom_text_style_t speed_style = {
+      .color = loom_rgb(255, 255, 255),
+      .opacity = 255,
+      .size_px = 144,
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_digits_144, speed_text,
+                         centered_x(&loom_font_noto_sans_digits_144,
+                                    speed_text),
+                         150, &speed_style);
+  }
+
+  loom_text_style_t unit_style = {
+      .color = loom_rgb(168, 190, 205),
+      .opacity = 255,
+      .size_px = 16,
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_16, "KM/H",
+                         centered_x(&loom_font_noto_sans_16, "KM/H"), 286,
+                         &unit_style);
+  }
+
+  return ret;
+}
+
+static loom_err_t display_draw_assist_gauge(loom_t *gfx,
+                                            const esc_peak_data_t *data,
+                                            const char *gear_text) {
+  loom_point_t center = {DISPLAY_WIDTH / 2, 382};
+  loom_stroke_t outer = {
+      .width = 3,
+      .color = loom_rgba(230, 240, 246, 74),
+  };
+  loom_err_t ret = loom_stroke_circle(gfx, center, 78, &outer);
+
+  loom_stroke_t track = {
+      .width = 12,
+      .color = loom_rgba(255, 255, 255, 28),
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_draw_arc(gfx, center, 64, 135, 270, &track);
+  }
+
+  int assist = clamp_u8(data->assist_level, DISPLAY_ASSIST_MAX);
+  int sweep = percent_to_sweep(assist, DISPLAY_ASSIST_MAX, 270);
+  if (ret == LOOM_OK && sweep > 0) {
+    loom_stroke_t stroke = {
+        .width = 12,
+        .color = loom_rgb(255, 255, 255),
+    };
+    loom_arc_gradient_t gradient = {
+        .mode = LOOM_ARC_GRADIENT_SWEEP,
+        .color0 = loom_rgb(255, 207, 95),
+        .color1 = mode_color(data->ride_mode),
+    };
+    ret = loom_draw_arc_gradient(gfx, center, 64, 135, sweep, &stroke,
+                                 &gradient);
+  }
+
+  loom_radial_gradient_t fill = {
+      .center = center,
+      .radius = 56,
+      .color0 = loom_rgba(255, 255, 255, 30),
+      .color1 = loom_rgba(255, 255, 255, 4),
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_fill_circle_radial_gradient(gfx, center, 54, &fill);
+  }
+
+  loom_text_style_t gear_style = {
+      .color = loom_rgb(245, 248, 250),
+      .opacity = 255,
+      .size_px = 96,
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_digits_96, gear_text,
+                         centered_x(&loom_font_noto_sans_digits_96,
+                                    gear_text),
+                         320, &gear_style);
+  }
+
+  loom_text_style_t support_style = {
+      .color = mode_color(data->ride_mode),
+      .opacity = 255,
+      .size_px = 32,
+  };
+  if (ret == LOOM_OK) {
+    const char *support_text = support_mode_text(data->support_mode);
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, support_text,
+                         centered_x(&loom_font_noto_sans_32, support_text),
+                         428, &support_style);
+  }
+
+  return ret;
+}
+
+static loom_err_t display_draw_status_pill(loom_t *gfx,
+                                           const esc_peak_data_t *data,
+                                           const char *voltage_text) {
+  loom_rect_t pill = loom_rect(24, 22, 432, 54);
+  loom_linear_gradient_t fill = {
+      .p0 = {pill.x, pill.y},
+      .p1 = {pill.x + pill.w, pill.y},
+      .color0 = loom_rgba(20, 35, 42, 236),
+      .color1 = loom_rgba(45, 58, 45, 236),
+  };
+  loom_err_t ret = loom_fill_round_rect_linear_gradient(gfx, pill, 18, &fill);
+
+  loom_stroke_t border = {
+      .width = 1,
+      .color = loom_rgba(255, 255, 255, 36),
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_stroke_round_rect(gfx, pill, 18, &border);
+  }
+
+  uint8_t battery_pct = clamp_u8(data->battery_percentage, 100);
+  loom_color_t indicator_color =
+      battery_pct > 0 ? loom_rgb(85, 220, 135) : loom_rgb(255, 207, 95);
+  loom_radial_gradient_t indicator = {
+      .center = {50, 49},
+      .radius = 17,
+      .color0 = loom_rgb(255, 255, 255),
+      .color1 = indicator_color,
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_fill_circle_radial_gradient(gfx, (loom_point_t){50, 49}, 15,
+                                           &indicator);
+  }
+
+  char battery_text[8];
+  const char *status_text = voltage_text;
+  if (battery_pct > 0) {
+    snprintf(battery_text, sizeof(battery_text), "%u%%",
+             (unsigned)battery_pct);
+    status_text = battery_text;
+  }
+
+  loom_text_style_t status_style = {
+      .color = loom_rgb(238, 246, 248),
+      .opacity = 255,
+      .size_px = 32,
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, status_text, 78, 32,
+                         &status_style);
+  }
+
+  loom_text_style_t voltage_style = {
+      .color = loom_rgb(170, 192, 202),
+      .opacity = 255,
+      .size_px = 16,
+  };
+  if (ret == LOOM_OK && battery_pct > 0) {
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_16, voltage_text, 158, 48,
+                         &voltage_style);
+  }
+
+  loom_text_style_t mode_style = {
+      .color = mode_color(data->ride_mode),
+      .opacity = 255,
+      .size_px = 32,
+  };
+  if (ret == LOOM_OK) {
+    const char *mode_text =
+        data->ride_mode == CYCLEIQ_RIDE_MODE_MOUNTAIN ? "MTN" : "ROAD";
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, mode_text,
+                         right_aligned_x(&loom_font_noto_sans_32, mode_text,
+                                         pill.x + pill.w - 18),
+                         32, &mode_style);
+  }
+
+  return ret;
+}
+
+static loom_err_t display_draw_metric_panel(loom_t *gfx, loom_rect_t rect,
+                                            const char *label,
+                                            const char *value,
+                                            loom_color_t accent) {
+  loom_linear_gradient_t fill = {
+      .p0 = {rect.x, rect.y},
+      .p1 = {rect.x + rect.w, rect.y + rect.h},
+      .color0 = loom_rgba(18, 27, 33, 232),
+      .color1 = loom_rgba(accent.r, accent.g, accent.b, 52),
+  };
+  loom_err_t ret = loom_fill_round_rect_linear_gradient(gfx, rect, 14, &fill);
+
+  loom_text_style_t label_style = {
+      .color = loom_rgb(132, 152, 164),
+      .opacity = 255,
+      .size_px = 16,
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_16, label, rect.x + 14,
+                         rect.y + 10, &label_style);
+  }
+
+  loom_text_style_t value_style = {
+      .color = loom_rgb(232, 240, 244),
+      .opacity = 255,
+      .size_px = 32,
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, value,
+                         centered_in_rect_x(&loom_font_noto_sans_32, value,
+                                            rect),
+                         rect.y + 32, &value_style);
+  }
+
+  loom_radial_gradient_t dot = {
+      .center = {rect.x + rect.w - 17, rect.y + 18},
+      .radius = 9,
+      .color0 = loom_rgb(255, 255, 255),
+      .color1 = accent,
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_fill_circle_radial_gradient(
+        gfx, (loom_point_t){rect.x + rect.w - 17, rect.y + 18}, 8, &dot);
+  }
+
+  return ret;
+}
+
+static loom_err_t display_draw_telemetry_row(loom_t *gfx,
+                                             const esc_peak_data_t *data,
+                                             const char *motor_temp_text,
+                                             const char *controller_temp_text,
+                                             const char *power_text) {
+  int power_sweep = percent_to_sweep(data->power, DISPLAY_POWER_MAX_W, 120);
+  loom_color_t power_color = power_sweep > 80 ? loom_rgb(255, 207, 95)
+                                              : loom_rgb(104, 202, 255);
+  int temp = data->motor_temperature > data->controller_temperature
+                 ? data->motor_temperature
+                 : data->controller_temperature;
+  int temp_sweep = percent_to_sweep(temp, DISPLAY_TEMP_MAX_C, 120);
+  loom_color_t temp_color = temp_sweep > 80 ? loom_rgb(255, 94, 94)
+                                            : loom_rgb(130, 220, 180);
+
+  loom_err_t ret =
+      display_draw_metric_panel(gfx, loom_rect(24, 536, 132, 78), "MOTOR",
+                                motor_temp_text, temp_color);
+  if (ret == LOOM_OK) {
+    ret = display_draw_metric_panel(gfx, loom_rect(174, 536, 132, 78), "CTRL",
+                                    controller_temp_text, temp_color);
+  }
+  if (ret == LOOM_OK) {
+    ret = display_draw_metric_panel(gfx, loom_rect(324, 536, 132, 78), "POWER",
+                                    power_text, power_color);
+  }
+
+  return ret;
+}
+
+static loom_err_t display_draw_button_toast(loom_t *gfx,
+                                            display_button_event_t event,
+                                            bool error) {
+  const char *event_text = button_event_text(event, error);
+  loom_rect_t toast = loom_rect(126, 88, 228, 46);
+  loom_color_t accent =
+      error ? loom_rgb(255, 86, 86) : loom_rgb(255, 211, 80);
+  loom_linear_gradient_t fill = {
+      .p0 = {toast.x, toast.y},
+      .p1 = {toast.x + toast.w, toast.y},
+      .color0 = loom_rgba(18, 22, 27, 244),
+      .color1 = loom_rgba(accent.r, accent.g, accent.b, 96),
+  };
+  loom_err_t ret =
+      loom_fill_round_rect_linear_gradient(gfx, toast, 16, &fill);
+
+  loom_stroke_t stroke = {
+      .width = 1,
+      .color = loom_rgba(accent.r, accent.g, accent.b, 128),
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_stroke_round_rect(gfx, toast, 16, &stroke);
+  }
+
+  loom_text_style_t button_style = {
+      .color = accent,
+      .opacity = 255,
+      .size_px = 32,
+  };
+  if (ret == LOOM_OK) {
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, event_text,
+                         centered_in_rect_x(&loom_font_noto_sans_32,
+                                            event_text, toast),
+                         96, &button_style);
+  }
+
+  return ret;
 }
 
 void display_show_button_event(display_button_event_t event, bool error) {
@@ -267,8 +648,8 @@ static esp_err_t display_demo(void) {
   static loom_esp_idf_t *gfx_backend = NULL;
   if (gfx == NULL) {
     loom_esp_idf_config_t cfg = {
-        .width = 480,
-        .height = 640,
+        .width = DISPLAY_WIDTH,
+        .height = DISPLAY_HEIGHT,
         .format = LOOM_PIXEL_FORMAT_RGB888,
         .tile_height = 64,
         .buffer_count = 2,
@@ -297,75 +678,28 @@ static esp_err_t display_demo(void) {
 
   int speed = (int)(data.speed + 0.5f);
   snprintf(speed_text, sizeof(speed_text), "%d", speed);
-  snprintf(gear_text, sizeof(gear_text), "%u", data.assist_level);
+  snprintf(gear_text, sizeof(gear_text), "%u",
+           (unsigned)clamp_u8(data.assist_level, DISPLAY_ASSIST_MAX));
   snprintf(voltage_text, sizeof(voltage_text), "%.1fV", data.battery_voltage);
   snprintf(motor_temp_text, sizeof(motor_temp_text), "M:%dC",
            data.motor_temperature);
   snprintf(controller_temp_text, sizeof(controller_temp_text), "C:%dC",
            data.controller_temperature);
-  snprintf(power_text, sizeof(power_text), "%uW", data.power);
+  snprintf(power_text, sizeof(power_text), "%uW", (unsigned)data.power);
 
-  ret = loom_clear(gfx, loom_rgb(5, 7, 9));
-
-  loom_text_style_t speed_style = {
-      .color = loom_rgb(255, 255, 255),
-      .opacity = 255,
-      .size_px = 144,
-  };
+  ret = display_draw_background(gfx);
   if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_digits_144, speed_text,
-                         centered_x(&loom_font_noto_sans_digits_144,
-                                    speed_text),
-                         150, &speed_style);
-  }
-
-  loom_text_style_t gear_style = {
-      .color = loom_rgb(245, 248, 250),
-      .opacity = 255,
-      .size_px = 96,
-  };
-  if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_digits_96, gear_text,
-                         centered_x(&loom_font_noto_sans_digits_96, gear_text),
-                         310, &gear_style);
-  }
-
-  loom_text_style_t support_style = {
-      .color = mode_color(data.ride_mode),
-      .opacity = 255,
-      .size_px = 32,
-  };
-  if (ret == LOOM_OK) {
-    const char *support_text = support_mode_text(data.support_mode);
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, support_text,
-                         centered_x(&loom_font_noto_sans_32, support_text),
-                         410, &support_style);
-  }
-
-  loom_text_style_t small_style = {
-      .color = loom_rgb(220, 230, 238),
-      .opacity = 255,
-      .size_px = 32,
-  };
-  if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, voltage_text,
-                         right_aligned_x(&loom_font_noto_sans_32, voltage_text,
-                                         456),
-                         28, &small_style);
+    ret = display_draw_speed_gauge(gfx, &data, speed_text);
   }
   if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, motor_temp_text, 24, 552,
-                         &small_style);
+    ret = display_draw_assist_gauge(gfx, &data, gear_text);
   }
   if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, controller_temp_text, 24,
-                         586, &small_style);
+    ret = display_draw_telemetry_row(gfx, &data, motor_temp_text,
+                                     controller_temp_text, power_text);
   }
   if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, power_text,
-                         right_aligned_x(&loom_font_noto_sans_32, power_text,
-                                         456),
-                         586, &small_style);
+    ret = display_draw_status_pill(gfx, &data, voltage_text);
   }
 
   display_button_event_t button_event;
@@ -380,16 +714,7 @@ static esp_err_t display_demo(void) {
   uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
   if (ret == LOOM_OK && button_event != DISPLAY_BUTTON_EVENT_NONE &&
       now_ms < button_event_until_ms) {
-    const char *event_text = button_event_text(button_event, button_event_error);
-    loom_text_style_t button_style = {
-        .color = button_event_error ? loom_rgb(255, 86, 86)
-                                    : loom_rgb(255, 211, 80),
-        .opacity = 255,
-        .size_px = 32,
-    };
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, event_text,
-                         centered_x(&loom_font_noto_sans_32, event_text), 92,
-                         &button_style);
+    ret = display_draw_button_toast(gfx, button_event, button_event_error);
   }
 
   loom_err_t end_ret = loom_end_frame(gfx);
@@ -406,6 +731,11 @@ void display_task(void *arg) {
 
 esp_err_t display_init(void) {
   dpi_panel = init();
+
+#if CONFIG_PEAK_LOOM_BENCHMARK
+  ESP_RETURN_ON_ERROR(loom_benchmark_run(dpi_panel), TAG,
+                      "run loom benchmark");
+#endif
 
   xTaskCreate(display_task, "display_task", 4096, NULL, 5, NULL);
 

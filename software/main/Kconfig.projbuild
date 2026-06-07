@@ -1,0 +1,30 @@
+menu "Peak"
+
+    config PEAK_LOOM_BENCHMARK
+        bool "Run Loom display benchmark at boot"
+        default n
+        help
+            Runs an on-device Loom benchmark after display panel
+            initialization and before the normal display task starts. The
+            benchmark uses the real ESP-IDF Loom backend and panel flush path,
+            then logs min/avg/max timings for each draw case.
+
+    config PEAK_LOOM_BENCHMARK_WARMUP_FRAMES
+        int "Loom benchmark warmup frames per case"
+        depends on PEAK_LOOM_BENCHMARK
+        default 3
+        range 0 20
+
+    config PEAK_LOOM_BENCHMARK_SAMPLES
+        int "Loom benchmark samples per case"
+        depends on PEAK_LOOM_BENCHMARK
+        default 8
+        range 1 100
+
+    config PEAK_LOOM_BENCHMARK_ITERATIONS
+        int "Loom benchmark frames per sample"
+        depends on PEAK_LOOM_BENCHMARK
+        default 5
+        range 1 100
+
+endmenu
