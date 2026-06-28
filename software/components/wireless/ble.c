@@ -9,6 +9,8 @@
 
 static const char *TAG = "ble_mgr";
 
+#define BLE_MANAGER_MAX_SERVICE_SETS 4
+
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static bool s_running = false;
 static ble_uuid128_t s_adv_uuid;
@@ -16,6 +18,8 @@ static bool s_has_adv_uuid = false;
 static const char *s_device_name = "PEAK";
 static uint8_t s_own_addr_type = BLE_OWN_ADDR_PUBLIC;
 static bool s_hosted_bt_enabled = false;
+static const struct ble_gatt_svc_def *s_service_sets[BLE_MANAGER_MAX_SERVICE_SETS];
+static size_t s_service_set_count;
 
 static void ble_app_advertise(void);
 
@@ -148,10 +152,19 @@ static void ble_host_task(void *param) {
 esp_err_t ble_manager_start(const char *device_name,
                             const struct ble_gatt_svc_def *services,
                             const ble_uuid128_t *adv_uuid) {
+  esp_err_t ret;
+
+  if (services != NULL) {
+    ret = ble_manager_register_services(services);
+    if (ret != ESP_OK) {
+      return ret;
+    }
+  }
+
   if (s_running)
     return ESP_OK;
 
-  esp_err_t ret = nvs_flash_init();
+  ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
       ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     nvs_flash_erase();
@@ -180,19 +193,56 @@ esp_err_t ble_manager_start(const char *device_name,
   ble_svc_gap_init();
   ble_svc_gatt_init();
 
-  if (services) {
-    ble_gatts_count_cfg(services);
-    ble_gatts_add_svcs(services);
+  for (size_t i = 0; i < s_service_set_count; i++) {
+    int rc = ble_gatts_count_cfg(s_service_sets[i]);
+    if (rc != 0) {
+      ESP_LOGE(TAG, "Failed to count BLE GATT service cfg; rc=%d", rc);
+      nimble_port_deinit();
+      ble_hosted_bt_stop();
+      return ESP_FAIL;
+    }
+
+    rc = ble_gatts_add_svcs(s_service_sets[i]);
+    if (rc != 0) {
+      ESP_LOGE(TAG, "Failed to add BLE GATT services; rc=%d", rc);
+      nimble_port_deinit();
+      ble_hosted_bt_stop();
+      return ESP_FAIL;
+    }
   }
 
   ble_hs_cfg.sync_cb = ble_app_on_sync;
-  nimble_port_freertos_init(ble_host_task);
-
   s_running = true;
+  nimble_port_freertos_init(ble_host_task);
   return ESP_OK;
 }
 
 uint16_t ble_manager_get_conn_handle(void) { return s_conn_handle; }
+
+esp_err_t ble_manager_register_services(
+    const struct ble_gatt_svc_def *services) {
+  if (services == NULL) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  for (size_t i = 0; i < s_service_set_count; i++) {
+    if (s_service_sets[i] == services) {
+      return ESP_OK;
+    }
+  }
+
+  if (s_running) {
+    ESP_LOGW(TAG, "Cannot register BLE services after manager start");
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  if (s_service_set_count >= BLE_MANAGER_MAX_SERVICE_SETS) {
+    return ESP_ERR_NO_MEM;
+  }
+
+  s_service_sets[s_service_set_count++] = services;
+  return ESP_OK;
+}
 
 esp_err_t ble_manager_stop(void) {
   if (!s_running)

@@ -205,10 +205,16 @@ static void peak_app_task(void *arg) {
   ESP_ERROR_CHECK(esc_peak_controller_init(&peak_controller));
 
   ESP_ERROR_CHECK(wifi_start_ap());
-  ESP_ERROR_CHECK(ble_ota_start());
 
   ESP_ERROR_CHECK(vesc_bridge_init());
-  vesc_bridge_start(&transport_udp);
+  const transport_iface_t *vesc_transports[] = {
+      &transport_udp,
+      &transport_ble,
+  };
+  ESP_ERROR_CHECK(
+      vesc_bridge_start(vesc_transports, sizeof(vesc_transports) /
+                                             sizeof(vesc_transports[0])));
+  ESP_ERROR_CHECK(ble_ota_start());
 
   // IO initialization
   i2c_master_init();

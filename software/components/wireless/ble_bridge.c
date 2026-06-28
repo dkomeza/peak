@@ -72,8 +72,7 @@ static esp_err_t ble_bridge_start(transport_rx_cb_t rx_cb, void *user_data) {
   s_receive_callback = rx_cb;
   s_receive_user_data = user_data;
 
-  // Inject our custom services into the generic manager
-  return ble_manager_start("PEAK", gatt_svr_svcs, &gatt_svr_svc_uuid);
+  return ble_manager_register_services(gatt_svr_svcs);
 }
 
 static esp_err_t ble_bridge_send(const uint8_t *data, size_t len) {
@@ -105,7 +104,11 @@ static esp_err_t ble_bridge_send(const uint8_t *data, size_t len) {
   return ESP_OK;
 }
 
-static esp_err_t ble_bridge_stop(void) { return ble_manager_stop(); }
+static esp_err_t ble_bridge_stop(void) {
+  s_receive_callback = NULL;
+  s_receive_user_data = NULL;
+  return ESP_OK;
+}
 
 // Map the functions to the generic interface
 const transport_iface_t transport_ble = {.name = "BLE Bridge",

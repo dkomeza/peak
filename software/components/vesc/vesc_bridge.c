@@ -1,6 +1,9 @@
 #include "vesc/vesc_bridge.h"
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 #include <inttypes.h>
 #include <string.h>
 
@@ -15,8 +18,14 @@ static const char *TAG = "vesc_bridge";
 #define TARGET_VESC_CAN_ID 69
 #define VESC_PAYLOAD_MAX_LEN PACKET_MAX_PL_LEN
 #define CAN_RX_BUFFER_COUNT 3
+#define VESC_BRIDGE_MAX_TRANSPORTS 2
+#define ACTIVE_TRANSPORT_TIMEOUT_MS 5000
 
-static const transport_iface_t *s_transport = NULL;
+typedef struct {
+  const transport_iface_t *iface;
+  PACKET_STATE_t rx_packet_state;
+  bool started;
+} vesc_transport_route_t;
 
 typedef enum {
   CAN_PACKET_FILL_RX_BUFFER = 5,
@@ -25,12 +34,19 @@ typedef enum {
   CAN_PACKET_PROCESS_SHORT_BUFFER = 8,
 } vesc_can_packet_t;
 
-static PACKET_STATE_t s_transport_rx_packet_state;
 static PACKET_STATE_t s_transport_tx_packet_state;
+static vesc_transport_route_t s_routes[VESC_BRIDGE_MAX_TRANSPORTS];
+static size_t s_route_count;
+static vesc_transport_route_t *s_active_route;
+static vesc_transport_route_t *s_processing_rx_route;
+static vesc_transport_route_t *s_sending_tx_route;
+static TickType_t s_active_last_rx_tick;
+static SemaphoreHandle_t s_state_mutex;
 static uint8_t s_can_rx_buffers[CAN_RX_BUFFER_COUNT][VESC_PAYLOAD_MAX_LEN];
 static uint16_t s_can_rx_offsets[CAN_RX_BUFFER_COUNT];
 static bool s_initialized;
 static bool s_started;
+static bool s_can_registered;
 
 // Telemetry counters
 static uint32_t s_invalid_can_responses;
@@ -39,7 +55,7 @@ static uint32_t s_can_send_failures;
 
 static void log_bridge_drops(void) {
   ESP_LOGW(TAG,
-           "Bridge drops: invalid_can=%" PRIu32 ", udp_send=%" PRIu32
+           "Bridge drops: invalid_can=%" PRIu32 ", transport_send=%" PRIu32
            ", can_send=%" PRIu32,
            s_invalid_can_responses, s_transport_send_failures,
            s_can_send_failures);
@@ -118,27 +134,6 @@ static esp_err_t send_payload_over_can(const uint8_t *data, unsigned int len) {
                          frame_data, 6);
 }
 
-static void forward_can_payload_to_udp(const uint8_t *data, unsigned int len) {
-  packet_send_packet((unsigned char *)data, len, &s_transport_tx_packet_state);
-}
-
-static void handle_udp_payload(unsigned char *data, unsigned int len) {
-  ESP_LOGD(TAG, "Full UDP Payload Rx, len: %d", len);
-  esp_err_t ret = send_payload_over_can(data, len);
-  if (ret != ESP_OK) {
-    ESP_LOGW(TAG, "Failed to forward UDP payload over CAN: %s",
-             esp_err_to_name(ret));
-  }
-}
-
-static void handle_udp_bytes(const uint8_t *data, size_t len, void *user_data) {
-  (void)user_data;
-
-  for (size_t i = 0; i < len; i++) {
-    packet_process_byte(data[i], &s_transport_rx_packet_state);
-  }
-}
-
 static void reset_can_rx_buffers(void) {
   memset(s_can_rx_offsets, 0, sizeof(s_can_rx_offsets));
 }
@@ -163,6 +158,60 @@ static bool append_can_response(uint16_t offset, const uint8_t *data,
   memcpy(s_can_rx_buffers[buffer_index] + offset, data, len);
   s_can_rx_offsets[buffer_index] = offset + len;
   return true;
+}
+
+static bool active_route_is_fresh(TickType_t now) {
+  if (s_active_route == NULL) {
+    return false;
+  }
+
+  TickType_t timeout_ticks = pdMS_TO_TICKS(ACTIVE_TRANSPORT_TIMEOUT_MS);
+  return (now - s_active_last_rx_tick) <= timeout_ticks;
+}
+
+static vesc_transport_route_t *get_active_route(void) {
+  vesc_transport_route_t *route = NULL;
+
+  xSemaphoreTake(s_state_mutex, portMAX_DELAY);
+  if (active_route_is_fresh(xTaskGetTickCount())) {
+    route = s_active_route;
+  } else {
+    s_active_route = NULL;
+  }
+  xSemaphoreGive(s_state_mutex);
+
+  return route;
+}
+
+static void send_transport_packet_bytes(unsigned char *data, unsigned int len) {
+  vesc_transport_route_t *route = s_sending_tx_route;
+
+  if (route == NULL || route->iface == NULL) {
+    return;
+  }
+
+  ESP_LOGD(TAG, "ESP->%s, len: %d", route->iface->name, len);
+  if (route->iface->send((const uint8_t *)data, len) != ESP_OK) {
+    s_transport_send_failures++;
+    log_bridge_drops();
+  }
+}
+
+static void forward_can_payload_to_active_transport(const uint8_t *data,
+                                                    unsigned int len) {
+  vesc_transport_route_t *route = get_active_route();
+  if (route == NULL) {
+    s_transport_send_failures++;
+    ESP_LOGW(TAG, "Dropping CAN response with no active VESC transport");
+    log_bridge_drops();
+    return;
+  }
+
+  xSemaphoreTake(s_state_mutex, portMAX_DELAY);
+  s_sending_tx_route = route;
+  packet_send_packet((unsigned char *)data, len, &s_transport_tx_packet_state);
+  s_sending_tx_route = NULL;
+  xSemaphoreGive(s_state_mutex);
 }
 
 static void handle_can_frame(uint32_t id, const uint8_t *data, uint8_t len,
@@ -208,7 +257,8 @@ static void handle_can_frame(uint32_t id, const uint8_t *data, uint8_t len,
       break;
     }
 
-    forward_can_payload_to_udp(s_can_rx_buffers[buffer_index], rx_len);
+    forward_can_payload_to_active_transport(s_can_rx_buffers[buffer_index],
+                                            rx_len);
     s_can_rx_offsets[buffer_index] = 0;
     return;
   }
@@ -216,7 +266,7 @@ static void handle_can_frame(uint32_t id, const uint8_t *data, uint8_t len,
   case CAN_PACKET_PROCESS_SHORT_BUFFER:
     if (len <= 2)
       break;
-    forward_can_payload_to_udp(data + 2, len - 2);
+    forward_can_payload_to_active_transport(data + 2, len - 2);
     return;
 
   default:
@@ -228,41 +278,48 @@ static void handle_can_frame(uint32_t id, const uint8_t *data, uint8_t len,
   log_bridge_drops();
 }
 
-static void send_transport_packet_bytes(unsigned char *data, unsigned int len) {
-  if (s_transport == NULL)
-    return;
-
-  ESP_LOGD(TAG, "ESP->%s, len: %d", s_transport->name, len);
-  if (s_transport->send((const uint8_t *)data, len) != ESP_OK) {
-    s_transport_send_failures++;
-    log_bridge_drops();
-  }
-}
-
 static void handle_transport_payload(unsigned char *data, unsigned int len) {
-  ESP_LOGD(TAG, "Full Transport Payload Rx, len: %d", len);
+  vesc_transport_route_t *route = s_processing_rx_route;
+  if (route == NULL || route->iface == NULL) {
+    return;
+  }
+
+  s_active_route = route;
+  s_active_last_rx_tick = xTaskGetTickCount();
+
+  ESP_LOGD(TAG, "%s->CAN payload, len: %d", route->iface->name, len);
   esp_err_t ret = send_payload_over_can(data, len);
   if (ret != ESP_OK) {
-    ESP_LOGW(TAG, "Failed to forward payload over CAN: %s",
-             esp_err_to_name(ret));
+    ESP_LOGW(TAG, "Failed to forward %s payload over CAN: %s",
+             route->iface->name, esp_err_to_name(ret));
   }
 }
 
 static void handle_transport_bytes(const uint8_t *data, size_t len,
                                    void *user_data) {
-  (void)user_data;
-
-  for (size_t i = 0; i < len; i++) {
-    packet_process_byte(data[i], &s_transport_rx_packet_state);
+  vesc_transport_route_t *route = (vesc_transport_route_t *)user_data;
+  if (route == NULL || !route->started || data == NULL || len == 0) {
+    return;
   }
+
+  xSemaphoreTake(s_state_mutex, portMAX_DELAY);
+  s_processing_rx_route = route;
+  for (size_t i = 0; i < len; i++) {
+    packet_process_byte(data[i], &route->rx_packet_state);
+  }
+  s_processing_rx_route = NULL;
+  xSemaphoreGive(s_state_mutex);
 }
 
 esp_err_t vesc_bridge_init(void) {
   if (s_initialized)
     return ESP_OK;
 
-  // Now properly using generic transport names!
-  packet_init(NULL, handle_transport_payload, &s_transport_rx_packet_state);
+  s_state_mutex = xSemaphoreCreateMutex();
+  if (s_state_mutex == NULL) {
+    return ESP_ERR_NO_MEM;
+  }
+
   packet_init(send_transport_packet_bytes, NULL, &s_transport_tx_packet_state);
 
   reset_can_rx_buffers();
@@ -273,37 +330,74 @@ esp_err_t vesc_bridge_init(void) {
   return ESP_OK;
 }
 
-esp_err_t vesc_bridge_start(const transport_iface_t *transport) {
-  if (!s_initialized || transport == NULL)
+esp_err_t vesc_bridge_start(const transport_iface_t *const *transports,
+                            size_t transport_count) {
+  if (!s_initialized || transports == NULL || transport_count == 0)
     return ESP_ERR_INVALID_STATE;
 
   if (s_started)
     return ESP_OK;
 
-  s_transport = transport;
-
-  esp_err_t ret = s_transport->start(handle_transport_bytes, NULL);
-  if (ret != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to start transport '%s'", s_transport->name);
-    s_transport = NULL;
-    return ret;
+  if (transport_count > VESC_BRIDGE_MAX_TRANSPORTS) {
+    return ESP_ERR_INVALID_ARG;
   }
 
-  // 2. Try to hook into the CAN bus
-  ret = can_register_cb(BRIDGE_CAN_ID, 0xFF, handle_can_frame, NULL);
-  if (ret != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to register CAN callback");
-
-    // Unroll the successful transport start to prevent a zombie state
-    if (s_transport->stop != NULL) {
-      s_transport->stop();
+  memset(s_routes, 0, sizeof(s_routes));
+  s_route_count = transport_count;
+  for (size_t i = 0; i < transport_count; i++) {
+    if (transports[i] == NULL || transports[i]->start == NULL ||
+        transports[i]->send == NULL) {
+      s_route_count = 0;
+      return ESP_ERR_INVALID_ARG;
     }
-    s_transport = NULL;
-    return ret;
+
+    s_routes[i].iface = transports[i];
+    packet_init(NULL, handle_transport_payload, &s_routes[i].rx_packet_state);
+  }
+
+  size_t started_count = 0;
+  esp_err_t first_error = ESP_OK;
+  for (size_t i = 0; i < s_route_count; i++) {
+    esp_err_t ret =
+        s_routes[i].iface->start(handle_transport_bytes, &s_routes[i]);
+    if (ret != ESP_OK) {
+      ESP_LOGW(TAG, "Failed to start transport '%s': %s",
+               s_routes[i].iface->name, esp_err_to_name(ret));
+      if (first_error == ESP_OK) {
+        first_error = ret;
+      }
+      continue;
+    }
+
+    s_routes[i].started = true;
+    started_count++;
+  }
+
+  if (started_count == 0) {
+    s_route_count = 0;
+    return first_error != ESP_OK ? first_error : ESP_ERR_INVALID_STATE;
+  }
+
+  if (!s_can_registered) {
+    esp_err_t ret = can_register_cb(BRIDGE_CAN_ID, 0xFF, handle_can_frame, NULL);
+    if (ret != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to register CAN callback");
+
+      for (size_t i = 0; i < s_route_count; i++) {
+        if (s_routes[i].started && s_routes[i].iface->stop != NULL) {
+          s_routes[i].iface->stop();
+        }
+      }
+      memset(s_routes, 0, sizeof(s_routes));
+      s_route_count = 0;
+      return ret;
+    }
+    s_can_registered = true;
   }
 
   s_started = true;
-  ESP_LOGI(TAG, "VESC bridge started using %s", s_transport->name);
+  ESP_LOGI(TAG, "VESC bridge started with %u transport(s)",
+           (unsigned int)started_count);
   return ESP_OK;
 }
 
@@ -314,16 +408,33 @@ esp_err_t vesc_bridge_stop(void) {
 
   s_started = false;
 
-  if (s_transport != NULL && s_transport->stop != NULL) {
-    esp_err_t ret = s_transport->stop();
-    if (ret != ESP_OK) {
-      ESP_LOGW(TAG, "Transport '%s' failed to stop cleanly: %s",
-               s_transport->name, esp_err_to_name(ret));
-      return ret;
+  esp_err_t first_error = ESP_OK;
+  for (size_t i = 0; i < s_route_count; i++) {
+    if (s_routes[i].started && s_routes[i].iface != NULL &&
+        s_routes[i].iface->stop != NULL) {
+      esp_err_t ret = s_routes[i].iface->stop();
+      if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Transport '%s' failed to stop cleanly: %s",
+                 s_routes[i].iface->name, esp_err_to_name(ret));
+        if (first_error == ESP_OK) {
+          first_error = ret;
+        }
+      }
     }
   }
 
-  s_transport = NULL;
+  xSemaphoreTake(s_state_mutex, portMAX_DELAY);
+  s_active_route = NULL;
+  s_processing_rx_route = NULL;
+  s_sending_tx_route = NULL;
+  xSemaphoreGive(s_state_mutex);
+
+  memset(s_routes, 0, sizeof(s_routes));
+  s_route_count = 0;
+
+  if (first_error != ESP_OK) {
+    return first_error;
+  }
 
   ESP_LOGI(TAG, "VESC bridge stopped gracefully");
   return ESP_OK;

@@ -19,6 +19,12 @@ esp_err_t ble_manager_start(const char *device_name,
                             const ble_uuid128_t *adv_uuid);
 
 /**
+ * @brief Registers additional GATT services before the BLE manager starts.
+ */
+esp_err_t ble_manager_register_services(
+    const struct ble_gatt_svc_def *services);
+
+/**
  * @brief Gets the active BLE connection handle.
  * @return The handle, or BLE_HS_CONN_HANDLE_NONE if no device is connected.
  */
