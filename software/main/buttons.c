@@ -4,9 +4,9 @@
 #include "freertos/idf_additions.h"
 #include <stdbool.h>
 
-#define BTN_UP_PIN 8
+#define BTN_UP_PIN 6
 #define BTN_POWER_PIN 7
-#define BTN_DOWN_PIN 6
+#define BTN_DOWN_PIN 8
 
 static const char *TAG = "buttons";
 static bool initialized = false;
