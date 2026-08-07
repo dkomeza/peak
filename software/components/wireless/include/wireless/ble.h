@@ -19,6 +19,15 @@ esp_err_t ble_manager_start(const char *device_name,
                             const ble_uuid128_t *adv_uuid);
 
 /**
+ * @brief Adds a 128-bit service UUID to the advertising payload.
+ *
+ * UUIDs must be added before ble_manager_start(). The first UUID is used as
+ * the primary advertised service; later UUIDs remain available through GATT
+ * discovery after connection.
+ */
+esp_err_t ble_manager_add_advertised_uuid(const ble_uuid128_t *uuid);
+
+/**
  * @brief Registers additional GATT services before the BLE manager starts.
  */
 esp_err_t ble_manager_register_services(

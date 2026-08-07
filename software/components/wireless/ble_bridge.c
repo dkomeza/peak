@@ -72,6 +72,11 @@ static esp_err_t ble_bridge_start(transport_rx_cb_t rx_cb, void *user_data) {
   s_receive_callback = rx_cb;
   s_receive_user_data = user_data;
 
+  esp_err_t ret = ble_manager_add_advertised_uuid(&gatt_svr_svc_uuid);
+  if (ret != ESP_OK) {
+    return ret;
+  }
+
   return ble_manager_register_services(gatt_svr_svcs);
 }
 

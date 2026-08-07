@@ -13,12 +13,21 @@
 #include "loom/loom.h"
 #include "loom/loom_esp_idf.h"
 #include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "PEAK";
+#define DISPLAY_TASK_STACK_SIZE 8192
+#define DISPLAY_ERROR_LOG_INTERVAL_MS 1000
+#define DISPLAY_BOOT_DIAG_LINE_MAX 32
+
 static portMUX_TYPE s_button_event_lock = portMUX_INITIALIZER_UNLOCKED;
 static display_button_event_t s_button_event = DISPLAY_BUTTON_EVENT_NONE;
 static bool s_button_event_error = false;
 static uint32_t s_button_event_until_ms = 0;
+static portMUX_TYPE s_boot_diag_lock = portMUX_INITIALIZER_UNLOCKED;
+static char s_boot_diag_line1[DISPLAY_BOOT_DIAG_LINE_MAX];
+static char s_boot_diag_line2[DISPLAY_BOOT_DIAG_LINE_MAX];
+static uint32_t s_boot_diag_until_ms = 0;
 
 esp_lcd_panel_handle_t dpi_panel;
 
@@ -172,6 +181,19 @@ void display_show_button_event(display_button_event_t event, bool error) {
   s_button_event_error = error;
   s_button_event_until_ms = now_ms + 2000;
   taskEXIT_CRITICAL(&s_button_event_lock);
+}
+
+void display_set_boot_diagnostic(const char *line1, const char *line2,
+                                 uint32_t duration_ms) {
+  uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+
+  taskENTER_CRITICAL(&s_boot_diag_lock);
+  snprintf(s_boot_diag_line1, sizeof(s_boot_diag_line1), "%s",
+           line1 != NULL ? line1 : "");
+  snprintf(s_boot_diag_line2, sizeof(s_boot_diag_line2), "%s",
+           line2 != NULL ? line2 : "");
+  s_boot_diag_until_ms = now_ms + duration_ms;
+  taskEXIT_CRITICAL(&s_boot_diag_lock);
 }
 
 esp_lcd_panel_handle_t init(void) {
@@ -342,6 +364,18 @@ static esp_err_t display_demo(void) {
                          410, &support_style);
   }
 
+  if (ret == LOOM_OK && data.walk_active) {
+    const char *walk_text = "WALK";
+    loom_text_style_t walk_style = {
+        .color = loom_rgb(255, 211, 80),
+        .opacity = 255,
+        .size_px = 32,
+    };
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, walk_text,
+                         centered_x(&loom_font_noto_sans_32, walk_text), 456,
+                         &walk_style);
+  }
+
   loom_text_style_t small_style = {
       .color = loom_rgb(220, 230, 238),
       .opacity = 255,
@@ -392,14 +426,50 @@ static esp_err_t display_demo(void) {
                          &button_style);
   }
 
+  char boot_diag_line1[DISPLAY_BOOT_DIAG_LINE_MAX];
+  char boot_diag_line2[DISPLAY_BOOT_DIAG_LINE_MAX];
+  uint32_t boot_diag_until_ms;
+  taskENTER_CRITICAL(&s_boot_diag_lock);
+  snprintf(boot_diag_line1, sizeof(boot_diag_line1), "%s", s_boot_diag_line1);
+  snprintf(boot_diag_line2, sizeof(boot_diag_line2), "%s", s_boot_diag_line2);
+  boot_diag_until_ms = s_boot_diag_until_ms;
+  taskEXIT_CRITICAL(&s_boot_diag_lock);
+
+  if (ret == LOOM_OK && now_ms < boot_diag_until_ms &&
+      boot_diag_line1[0] != '\0') {
+    loom_text_style_t diag_style = {
+        .color = loom_rgb(255, 86, 86),
+        .opacity = 255,
+        .size_px = 32,
+    };
+    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, boot_diag_line1,
+                         centered_x(&loom_font_noto_sans_32, boot_diag_line1),
+                         72, &diag_style);
+    if (ret == LOOM_OK && boot_diag_line2[0] != '\0') {
+      ret =
+          loom_draw_text(gfx, &loom_font_noto_sans_32, boot_diag_line2,
+                         centered_x(&loom_font_noto_sans_32, boot_diag_line2),
+                         108, &diag_style);
+    }
+  }
+
   loom_err_t end_ret = loom_end_frame(gfx);
   return loom_err_to_esp_err(ret != LOOM_OK ? ret : end_ret);
 }
 
 void display_task(void *arg) {
+  (void)arg;
+  uint32_t last_error_log_ms = 0;
 
   for (;;) {
-    display_demo();
+    esp_err_t ret = display_demo();
+    if (ret != ESP_OK) {
+      uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+      if (now_ms - last_error_log_ms >= DISPLAY_ERROR_LOG_INTERVAL_MS) {
+        ESP_LOGW(TAG, "Display render failed: %s", esp_err_to_name(ret));
+        last_error_log_ms = now_ms;
+      }
+    }
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
@@ -407,7 +477,13 @@ void display_task(void *arg) {
 esp_err_t display_init(void) {
   dpi_panel = init();
 
-  xTaskCreate(display_task, "display_task", 4096, NULL, 5, NULL);
+  BaseType_t ret =
+      xTaskCreate(display_task, "display_task", DISPLAY_TASK_STACK_SIZE, NULL,
+                  5, NULL);
+  if (ret != pdPASS) {
+    ESP_LOGE(TAG, "Failed to create display task");
+    return ESP_ERR_NO_MEM;
+  }
 
   return ESP_OK;
 }

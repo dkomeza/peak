@@ -6,6 +6,7 @@
 #include "nvs_flash.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
+#include <string.h>
 
 static const char *TAG = "ble_mgr";
 
@@ -104,6 +105,7 @@ static void ble_app_advertise(void) {
   if (!s_running)
     return;
 
+  const char *gap_name = ble_svc_gap_device_name();
   struct ble_gap_adv_params adv_params;
   struct ble_hs_adv_fields fields;
 
@@ -112,24 +114,31 @@ static void ble_app_advertise(void) {
   fields.tx_pwr_lvl_is_present = 1;
   fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
 
-  fields.name = (uint8_t *)s_device_name;
-  fields.name_len = strlen(s_device_name);
+  fields.name = (uint8_t *)gap_name;
+  fields.name_len = strlen(gap_name);
   fields.name_is_complete = 1;
 
   if (s_has_adv_uuid) {
     fields.uuids128 = &s_adv_uuid;
     fields.num_uuids128 = 1;
-    fields.uuids128_is_complete = 1;
+    fields.uuids128_is_complete = 0;
   }
 
-  ble_gap_adv_set_fields(&fields);
+  int rc = ble_gap_adv_set_fields(&fields);
+  if (rc != 0) {
+    ESP_LOGE(TAG, "Failed to set BLE advertising fields; rc=%d", rc);
+    return;
+  }
 
   memset(&adv_params, 0, sizeof(adv_params));
   adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
   adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
 
-  ble_gap_adv_start(s_own_addr_type, NULL, BLE_HS_FOREVER, &adv_params,
-                    ble_gap_event, NULL);
+  rc = ble_gap_adv_start(s_own_addr_type, NULL, BLE_HS_FOREVER, &adv_params,
+                         ble_gap_event, NULL);
+  if (rc != 0) {
+    ESP_LOGE(TAG, "Failed to start BLE advertising; rc=%d", rc);
+  }
 }
 
 static void ble_app_on_sync(void) {
@@ -173,8 +182,10 @@ esp_err_t ble_manager_start(const char *device_name,
 
   s_device_name = device_name;
   if (adv_uuid) {
-    s_adv_uuid = *adv_uuid;
-    s_has_adv_uuid = true;
+    ret = ble_manager_add_advertised_uuid(adv_uuid);
+    if (ret != ESP_OK) {
+      return ret;
+    }
   }
 
   ret = ble_hosted_bt_start();
@@ -189,9 +200,16 @@ esp_err_t ble_manager_start(const char *device_name,
     return ret;
   }
 
-  ble_svc_gap_device_name_set(s_device_name);
   ble_svc_gap_init();
   ble_svc_gatt_init();
+
+  int name_rc = ble_svc_gap_device_name_set(s_device_name);
+  if (name_rc != 0) {
+    ESP_LOGE(TAG, "Failed to set BLE GAP device name; rc=%d", name_rc);
+    nimble_port_deinit();
+    ble_hosted_bt_stop();
+    return ESP_FAIL;
+  }
 
   for (size_t i = 0; i < s_service_set_count; i++) {
     int rc = ble_gatts_count_cfg(s_service_sets[i]);
@@ -218,6 +236,26 @@ esp_err_t ble_manager_start(const char *device_name,
 }
 
 uint16_t ble_manager_get_conn_handle(void) { return s_conn_handle; }
+
+esp_err_t ble_manager_add_advertised_uuid(const ble_uuid128_t *uuid) {
+  if (uuid == NULL) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  if (s_running) {
+    ESP_LOGW(TAG, "Cannot add BLE advertised UUID after manager start");
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  if (s_has_adv_uuid) {
+    ESP_LOGI(TAG, "Keeping existing primary BLE advertised UUID");
+    return ESP_OK;
+  }
+
+  s_adv_uuid = *uuid;
+  s_has_adv_uuid = true;
+  return ESP_OK;
+}
 
 esp_err_t ble_manager_register_services(
     const struct ble_gatt_svc_def *services) {

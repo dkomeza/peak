@@ -18,6 +18,7 @@ static SemaphoreHandle_t esc_kt_data_mutex;
 static SemaphoreHandle_t peak_kt_data_mutex;
 static TaskHandle_t esc_kt_send_task_handle;
 static volatile bool esc_kt_send_task_running;
+static bool esc_kt_walk_active;
 
 static const uart_port_t KT_PORT = UART_NUM_1;
 
@@ -84,7 +85,10 @@ void peak_create_packet(uint8_t *packet) {
   xSemaphoreTake(peak_kt_data_mutex, portMAX_DELAY);
 
   uint8_t assist_level =
-      kt_clamp_assist_level(peak_kt_data.assist_level, peak_kt_data.ride_mode);
+      esc_kt_walk_active
+          ? 6u
+          : kt_clamp_assist_level(peak_kt_data.assist_level,
+                                  peak_kt_data.ride_mode);
 
   uint8_t B2 = ((peak_kt_data.max_speed - 10) & 0x1F) << 3 |
                peak_kt_data.wheel_size.val >> 2;
@@ -251,17 +255,29 @@ static esp_err_t esc_kt_set_gear(void *ctx, uint8_t gear) {
   return ESP_OK;
 }
 
+static esp_err_t esc_kt_set_walk_mode(void *ctx, bool enabled) {
+  (void)ctx;
+
+  xSemaphoreTake(peak_kt_data_mutex, portMAX_DELAY);
+  esc_kt_walk_active = enabled;
+  xSemaphoreGive(peak_kt_data_mutex);
+
+  return ESP_OK;
+}
+
 static const esc_controller_ops_t s_kt_controller_ops = {
     .name = "KT",
     .set_power = esc_kt_set_power,
     .set_ride_mode = esc_kt_set_ride_mode,
     .set_gear = esc_kt_set_gear,
     .set_support_mode = NULL,
+    .set_walk_mode = esc_kt_set_walk_mode,
 };
 
 void esc_kt_init(void) {
   esc_kt_data_mutex = xSemaphoreCreateMutex();
   peak_kt_data_mutex = xSemaphoreCreateMutex();
+  esc_kt_walk_active = false;
 
   esc_kt_setup_uart();
   esc_kt_setup_power_gpio();

@@ -3,6 +3,7 @@
 
 #include "cycleiq_protocol.h"
 #include "esc/controller.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef struct {
@@ -23,6 +24,7 @@ typedef struct {
   uint8_t assist_level;
   cycleiq_support_mode_t support_mode;
   cycleiq_ride_mode_t ride_mode;
+  bool walk_active;
 
   // Live data
   float speed;

@@ -77,12 +77,21 @@ static esp_err_t esc_peak_set_support_mode(void *ctx, esc_support_mode_t mode) {
       cycleiq_set_support_mode(&frame, (cycleiq_support_mode_t)mode), &frame);
 }
 
+static esp_err_t esc_peak_set_walk_mode(void *ctx, bool enabled) {
+  (void)ctx;
+
+  cycleiq_frame_t frame;
+  return esc_peak_send_built_frame(cycleiq_set_walk_mode(&frame, enabled),
+                                   &frame);
+}
+
 static const esc_controller_ops_t s_peak_controller_ops = {
     .name = "PEAK",
     .set_power = esc_peak_set_power,
     .set_ride_mode = esc_peak_set_ride_mode,
     .set_gear = esc_peak_set_gear,
     .set_support_mode = esc_peak_set_support_mode,
+    .set_walk_mode = esc_peak_set_walk_mode,
 };
 
 static uint16_t read_be_u16(const uint8_t *data) {
@@ -145,6 +154,16 @@ static void esc_peak_parse_live_status(const uint8_t *data, uint8_t len) {
 
   esc_peak_data.speed = read_be_u16(data) / 100.0f;
   esc_peak_data.power = read_be_u16(data + 2);
+}
+
+static void esc_peak_parse_walk_state(const cycleiq_frame_t *frame) {
+  bool active;
+  if (!cycleiq_read_walk_state(frame, &active)) {
+    ESP_LOGW(TAG, "invalid walk state telemetry frame");
+    return;
+  }
+
+  esc_peak_data.walk_active = active;
 }
 
 static void esc_peak_parse_trip_primary(const uint8_t *data, uint8_t len) {
@@ -253,6 +272,9 @@ void esc_peak_parse_data(uint32_t id, const uint8_t *data, uint8_t len,
     break;
   case PEAK_PACKET_TYPE_TRIP_SECONDARY:
     esc_peak_parse_trip_secondary(frame.data, frame.len);
+    break;
+  case PEAK_PACKET_TYPE_WALK_STATE:
+    esc_peak_parse_walk_state(&frame);
     break;
   default:
     break;

@@ -29,6 +29,7 @@ struct esc_controller_ops {
   esp_err_t (*set_ride_mode)(void *ctx, esc_ride_mode_t mode);
   esp_err_t (*set_gear)(void *ctx, uint8_t gear);
   esp_err_t (*set_support_mode)(void *ctx, esc_support_mode_t mode);
+  esp_err_t (*set_walk_mode)(void *ctx, bool enabled);
 };
 
 const char *esc_controller_name(const esc_controller_t *controller);
@@ -40,5 +41,7 @@ esp_err_t esc_controller_set_gear(const esc_controller_t *controller,
                                   uint8_t gear);
 esp_err_t esc_controller_set_support_mode(const esc_controller_t *controller,
                                           esc_support_mode_t mode);
+esp_err_t esc_controller_set_walk_mode(const esc_controller_t *controller,
+                                       bool enabled);
 
 #endif

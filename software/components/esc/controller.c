@@ -59,3 +59,16 @@ esp_err_t esc_controller_set_support_mode(const esc_controller_t *controller,
 
   return controller->ops->set_support_mode(controller->ctx, mode);
 }
+
+esp_err_t esc_controller_set_walk_mode(const esc_controller_t *controller,
+                                       bool enabled) {
+  if (controller == NULL || controller->ops == NULL) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  if (controller->ops->set_walk_mode == NULL) {
+    return ESP_ERR_NOT_SUPPORTED;
+  }
+
+  return controller->ops->set_walk_mode(controller->ctx, enabled);
+}
