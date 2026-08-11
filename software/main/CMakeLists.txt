@@ -3,7 +3,7 @@ idf_component_register(SRCS "main.c"
                             "boot/boot.c"
                             "display/display.c"
                        PRIV_REQUIRES io vesc connection wireless esc 
-                                      nvs_flash esp_timer esp_lcd esp_lcd_st7701 loom
+                                      nvs_flash esp_timer esp_lcd esp_lcd_st7701 
                        INCLUDE_DIRS "." "boot" "utils"
 )
 

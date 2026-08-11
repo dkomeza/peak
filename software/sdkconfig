@@ -3140,14 +3140,6 @@ CONFIG_VFS_INITIALIZE_DEV_NULL=y
 # end of Virtual file system
 
 #
-# Loom
-#
-CONFIG_LOOM_PERF_LOG_LEVEL_NONE=y
-# CONFIG_LOOM_PERF_LOG_LEVEL_INFO is not set
-# CONFIG_LOOM_PERF_LOG_LEVEL_DEBUG is not set
-# end of Loom
-
-#
 # CMake Utilities
 #
 # CONFIG_CU_RELINKER_ENABLE is not set

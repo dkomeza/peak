@@ -62,7 +62,7 @@ static void log_bridge_drops(void) {
 }
 
 static esp_err_t send_can_packet(uint8_t target_id, vesc_can_packet_t packet_id,
-                                 const uint8_t *data, uint8_t len) {
+                                 uint8_t *data, uint8_t len) {
   uint32_t id = target_id | ((uint32_t)packet_id << 8);
 
   ESP_LOGD(TAG, "ESP->CAN, id: %lu, len: %d", id, len);
@@ -75,7 +75,7 @@ static esp_err_t send_can_packet(uint8_t target_id, vesc_can_packet_t packet_id,
   return ret;
 }
 
-static esp_err_t send_payload_over_can(const uint8_t *data, unsigned int len) {
+static esp_err_t send_payload_over_can(uint8_t *data, unsigned int len) {
   uint8_t frame_data[8];
 
   if (data == NULL || len == 0 || len > VESC_PAYLOAD_MAX_LEN) {

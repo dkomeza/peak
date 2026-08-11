@@ -1,5 +1,6 @@
 #include "display.h"
 #include "driver/gpio.h"
+#include "esc/peak.h"
 #include "esp_check.h"
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_lcd_panel_ops.h"
@@ -7,11 +8,7 @@
 #include "esp_ldo_regulator.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "esc/peak.h"
 #include "freertos/idf_additions.h"
-#include "loom/fonts.h"
-#include "loom/loom.h"
-#include "loom/loom_esp_idf.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -117,50 +114,11 @@ static const st7701_lcd_init_cmd_t init_cmds[] = {
     {0x29, (uint8_t[]){0x00}, 0, 25}, // Display ON + Delay
 };
 
-static int text_width(const loom_font_t *font, const char *text) {
-  if (font == NULL || text == NULL) {
-    return 0;
-  }
-
-  int width = 0;
-  for (const char *p = text; *p != '\0'; p++) {
-    bool found = false;
-    for (uint16_t i = 0; i < font->glyph_count; i++) {
-      if (font->glyphs[i].codepoint == (uint8_t)*p) {
-        width += font->glyphs[i].advance_x;
-        found = true;
-        break;
-      }
-    }
-
-    if (!found) {
-      width += font->line_height > 0 ? font->line_height / 2 : 8;
-    }
-  }
-
-  return width;
-}
-
-static int centered_x(const loom_font_t *font, const char *text) {
-  return (480 - text_width(font, text)) / 2;
-}
-
-static int right_aligned_x(const loom_font_t *font, const char *text,
-                           int right) {
-  return right - text_width(font, text);
-}
-
 static const char *support_mode_text(cycleiq_support_mode_t mode) {
   return mode == CYCLEIQ_MODE_TORQUE ? "TQ" : "PAS";
 }
 
-static loom_color_t mode_color(cycleiq_ride_mode_t mode) {
-  return mode == CYCLEIQ_RIDE_MODE_MOUNTAIN ? loom_rgb(230, 42, 42)
-                                            : loom_rgb(120, 210, 255);
-}
-
-static const char *button_event_text(display_button_event_t event,
-                                     bool error) {
+static const char *button_event_text(display_button_event_t event, bool error) {
   switch (event) {
   case DISPLAY_BUTTON_EVENT_UP:
     return error ? "UP ERR" : "UP";
@@ -232,7 +190,8 @@ esp_lcd_panel_handle_t init(void) {
       .virtual_channel = 0,
       .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
       .dpi_clock_freq_mhz = 20,
-      .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB888,
+      .out_color_format = LCD_COLOR_FMT_RGB888,
+      .in_color_format = LCD_COLOR_FMT_RGB888,
       .video_timing =
           {
               .h_size = 480,
@@ -244,7 +203,6 @@ esp_lcd_panel_handle_t init(void) {
               .vsync_back_porch = 12,
               .vsync_front_porch = 8,
           },
-      .flags.use_dma2d = 1,
   };
 
   // 4. ST7701 vendor config — for MIPI mode, dsi_bus and dpi_config
@@ -284,192 +242,11 @@ esp_lcd_panel_handle_t init(void) {
   return dpi_panel;
 }
 
-static esp_err_t display_demo(void) {
-  static loom_t *gfx = NULL;
-  static loom_esp_idf_t *gfx_backend = NULL;
-  if (gfx == NULL) {
-    loom_esp_idf_config_t cfg = {
-        .width = 480,
-        .height = 640,
-        .format = LOOM_PIXEL_FORMAT_RGB888,
-        .tile_height = 64,
-        .buffer_count = 2,
-        .command_capacity = 128,
-        .panel = dpi_panel,
-    };
-
-    ESP_RETURN_ON_ERROR(loom_esp_idf_create(&cfg, &gfx_backend, &gfx), TAG,
-                        "create loom");
-  }
-
-  loom_err_t ret = loom_begin_frame(gfx);
-  if (ret != LOOM_OK) {
-    return loom_err_to_esp_err(ret);
-  }
-
-  esc_peak_data_t data;
-  esc_peak_get_data(&data);
-
-  char speed_text[8];
-  char gear_text[4];
-  char voltage_text[16];
-  char motor_temp_text[16];
-  char controller_temp_text[16];
-  char power_text[16];
-
-  int speed = (int)(data.speed + 0.5f);
-  snprintf(speed_text, sizeof(speed_text), "%d", speed);
-  snprintf(gear_text, sizeof(gear_text), "%u", data.assist_level);
-  snprintf(voltage_text, sizeof(voltage_text), "%.1fV", data.battery_voltage);
-  snprintf(motor_temp_text, sizeof(motor_temp_text), "M:%dC",
-           data.motor_temperature);
-  snprintf(controller_temp_text, sizeof(controller_temp_text), "C:%dC",
-           data.controller_temperature);
-  snprintf(power_text, sizeof(power_text), "%uW", data.power);
-
-  ret = loom_clear(gfx, loom_rgb(5, 7, 9));
-
-  loom_text_style_t speed_style = {
-      .color = loom_rgb(255, 255, 255),
-      .opacity = 255,
-      .size_px = 144,
-  };
-  if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_digits_144, speed_text,
-                         centered_x(&loom_font_noto_sans_digits_144,
-                                    speed_text),
-                         150, &speed_style);
-  }
-
-  loom_text_style_t gear_style = {
-      .color = loom_rgb(245, 248, 250),
-      .opacity = 255,
-      .size_px = 96,
-  };
-  if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_digits_96, gear_text,
-                         centered_x(&loom_font_noto_sans_digits_96, gear_text),
-                         310, &gear_style);
-  }
-
-  loom_text_style_t support_style = {
-      .color = mode_color(data.ride_mode),
-      .opacity = 255,
-      .size_px = 32,
-  };
-  if (ret == LOOM_OK) {
-    const char *support_text = support_mode_text(data.support_mode);
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, support_text,
-                         centered_x(&loom_font_noto_sans_32, support_text),
-                         410, &support_style);
-  }
-
-  if (ret == LOOM_OK && data.walk_active) {
-    const char *walk_text = "WALK";
-    loom_text_style_t walk_style = {
-        .color = loom_rgb(255, 211, 80),
-        .opacity = 255,
-        .size_px = 32,
-    };
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, walk_text,
-                         centered_x(&loom_font_noto_sans_32, walk_text), 456,
-                         &walk_style);
-  }
-
-  loom_text_style_t small_style = {
-      .color = loom_rgb(220, 230, 238),
-      .opacity = 255,
-      .size_px = 32,
-  };
-  if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, voltage_text,
-                         right_aligned_x(&loom_font_noto_sans_32, voltage_text,
-                                         456),
-                         28, &small_style);
-  }
-  if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, motor_temp_text, 24, 552,
-                         &small_style);
-  }
-  if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, controller_temp_text, 24,
-                         586, &small_style);
-  }
-  if (ret == LOOM_OK) {
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, power_text,
-                         right_aligned_x(&loom_font_noto_sans_32, power_text,
-                                         456),
-                         586, &small_style);
-  }
-
-  display_button_event_t button_event;
-  bool button_event_error;
-  uint32_t button_event_until_ms;
-  taskENTER_CRITICAL(&s_button_event_lock);
-  button_event = s_button_event;
-  button_event_error = s_button_event_error;
-  button_event_until_ms = s_button_event_until_ms;
-  taskEXIT_CRITICAL(&s_button_event_lock);
-
-  uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-  if (ret == LOOM_OK && button_event != DISPLAY_BUTTON_EVENT_NONE &&
-      now_ms < button_event_until_ms) {
-    const char *event_text = button_event_text(button_event, button_event_error);
-    loom_text_style_t button_style = {
-        .color = button_event_error ? loom_rgb(255, 86, 86)
-                                    : loom_rgb(255, 211, 80),
-        .opacity = 255,
-        .size_px = 32,
-    };
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, event_text,
-                         centered_x(&loom_font_noto_sans_32, event_text), 92,
-                         &button_style);
-  }
-
-  char boot_diag_line1[DISPLAY_BOOT_DIAG_LINE_MAX];
-  char boot_diag_line2[DISPLAY_BOOT_DIAG_LINE_MAX];
-  uint32_t boot_diag_until_ms;
-  taskENTER_CRITICAL(&s_boot_diag_lock);
-  snprintf(boot_diag_line1, sizeof(boot_diag_line1), "%s", s_boot_diag_line1);
-  snprintf(boot_diag_line2, sizeof(boot_diag_line2), "%s", s_boot_diag_line2);
-  boot_diag_until_ms = s_boot_diag_until_ms;
-  taskEXIT_CRITICAL(&s_boot_diag_lock);
-
-  if (ret == LOOM_OK && now_ms < boot_diag_until_ms &&
-      boot_diag_line1[0] != '\0') {
-    loom_text_style_t diag_style = {
-        .color = loom_rgb(255, 86, 86),
-        .opacity = 255,
-        .size_px = 32,
-    };
-    ret = loom_draw_text(gfx, &loom_font_noto_sans_32, boot_diag_line1,
-                         centered_x(&loom_font_noto_sans_32, boot_diag_line1),
-                         72, &diag_style);
-    if (ret == LOOM_OK && boot_diag_line2[0] != '\0') {
-      ret =
-          loom_draw_text(gfx, &loom_font_noto_sans_32, boot_diag_line2,
-                         centered_x(&loom_font_noto_sans_32, boot_diag_line2),
-                         108, &diag_style);
-    }
-  }
-
-  loom_err_t end_ret = loom_end_frame(gfx);
-  return loom_err_to_esp_err(ret != LOOM_OK ? ret : end_ret);
-}
-
 void display_task(void *arg) {
   (void)arg;
   uint32_t last_error_log_ms = 0;
 
   for (;;) {
-    esp_err_t ret = display_demo();
-    if (ret != ESP_OK) {
-      uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-      if (now_ms - last_error_log_ms >= DISPLAY_ERROR_LOG_INTERVAL_MS) {
-        ESP_LOGW(TAG, "Display render failed: %s", esp_err_to_name(ret));
-        last_error_log_ms = now_ms;
-      }
-    }
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
@@ -477,9 +254,8 @@ void display_task(void *arg) {
 esp_err_t display_init(void) {
   dpi_panel = init();
 
-  BaseType_t ret =
-      xTaskCreate(display_task, "display_task", DISPLAY_TASK_STACK_SIZE, NULL,
-                  5, NULL);
+  BaseType_t ret = xTaskCreate(display_task, "display_task",
+                               DISPLAY_TASK_STACK_SIZE, NULL, 5, NULL);
   if (ret != pdPASS) {
     ESP_LOGE(TAG, "Failed to create display task");
     return ESP_ERR_NO_MEM;

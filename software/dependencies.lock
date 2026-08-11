@@ -103,6 +103,6 @@ direct_dependencies:
 - espressif/esp_lcd_st7701
 - espressif/esp_wifi_remote
 - idf
-manifest_hash: 8641e546914de7a3418791e12c71926fd8186ca757454232482eb24126d9d2d9
+manifest_hash: e9fd2fc6ad7db224df9540f1599b656d34ac80bd57e0c20936bf96636e2ba8e0
 target: esp32p4
 version: 3.0.0
