@@ -97,7 +97,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.5.1
+    version: 6.0.1
 direct_dependencies:
 - espressif/esp_hosted
 - espressif/esp_lcd_st7701
@@ -105,4 +105,4 @@ direct_dependencies:
 - idf
 manifest_hash: 8641e546914de7a3418791e12c71926fd8186ca757454232482eb24126d9d2d9
 target: esp32p4
-version: 2.0.0
+version: 3.0.0

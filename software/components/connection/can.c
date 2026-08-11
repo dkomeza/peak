@@ -1,8 +1,11 @@
 #include "can.h"
 
-#include "driver/twai.h"
 #include "esp_log.h"
+#include "esp_twai.h"
+#include "esp_twai_onchip.h"
+#include "esp_twai_types.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -23,16 +26,23 @@ typedef struct {
   bool active;
 } can_subscriber_t;
 
+typedef struct {
+  twai_frame_header_t header;
+  uint8_t buffer[8];
+} can_rx_msg_t;
+
 static can_subscriber_t s_subscribers[CAN_MAX_CALLBACKS];
 static SemaphoreHandle_t s_mutex = NULL;
 static bool s_initialized = false;
+static twai_node_handle_t s_node_hdl = NULL;
+static QueueHandle_t s_rx_queue = NULL;
 
 static void can_rx_dispatcher_task(void *arg) {
-  twai_message_t rx_msg;
+  twai_frame_t rx_msg;
 
   while (1) {
-    if (twai_receive(&rx_msg, portMAX_DELAY) == ESP_OK) {
-      if (!rx_msg.extd || rx_msg.rtr) {
+    if (xQueueReceive(s_rx_queue, &rx_msg, portMAX_DELAY) == ESP_OK) {
+      if (!rx_msg.header.ide || rx_msg.header.rtr) {
         continue;
       }
 
@@ -41,8 +51,8 @@ static void can_rx_dispatcher_task(void *arg) {
           can_subscriber_t *sub = &s_subscribers[i];
 
           if (sub->active && sub->cb != NULL) {
-            if ((rx_msg.identifier & sub->mask) == sub->id) {
-              sub->cb(rx_msg.identifier, rx_msg.data, rx_msg.data_length_code,
+            if ((rx_msg.header.id & sub->mask) == sub->id) {
+              sub->cb(rx_msg.header.id, rx_msg.buffer, rx_msg.header.dlc,
                       sub->user_data);
             }
           }
@@ -51,6 +61,25 @@ static void can_rx_dispatcher_task(void *arg) {
       }
     }
   }
+}
+
+static bool can_on_rx_done(twai_node_handle_t node,
+                           const twai_rx_done_event_data_t *edata,
+                           void *user_ctx) {
+  can_rx_msg_t msg;
+  BaseType_t higher_priority_task_woken = pdFALSE;
+
+  twai_frame_t rx_msg = {
+      .buffer = msg.buffer,
+      .buffer_len = sizeof(msg.buffer),
+  };
+
+  if (ESP_OK == twai_node_receive_from_isr(node, &rx_msg)) {
+    msg.header = rx_msg.header;
+    xQueueSendFromISR(s_rx_queue, &msg, &higher_priority_task_woken);
+  }
+
+  return (higher_priority_task_woken == pdTRUE);
 }
 
 esp_err_t can_init(void) {
@@ -63,21 +92,36 @@ esp_err_t can_init(void) {
 
   memset(s_subscribers, 0, sizeof(s_subscribers));
 
-  twai_general_config_t g_config =
-      TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_GPIO, CAN_RX_GPIO, TWAI_MODE_NORMAL);
-  g_config.rx_queue_len = CAN_RX_QUEUE_DEPTH;
-  g_config.tx_queue_len = CAN_TX_QUEUE_DEPTH;
+  twai_onchip_node_config_t node_config = {
+      .io_cfg.tx = CAN_TX_GPIO,
+      .io_cfg.rx = CAN_RX_GPIO,
+      .bit_timing.bitrate = 500000, // 500 kbps
+      .tx_queue_depth = CAN_TX_QUEUE_DEPTH,
+  };
 
-  twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
-  twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+  esp_err_t node_ret = twai_new_node_onchip(&node_config, &s_node_hdl);
+  if (node_ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to create TWAI node: %s", esp_err_to_name(node_ret));
+    return node_ret;
+  }
 
-  esp_err_t ret = twai_driver_install(&g_config, &t_config, &f_config);
-  if (ret != ESP_OK)
-    return ret;
+  s_rx_queue = xQueueCreate(CAN_RX_QUEUE_DEPTH, sizeof(can_rx_msg_t));
+  twai_event_callbacks_t event_cbs = {
+      .on_rx_done = can_on_rx_done,
+  };
+  esp_err_t event_ret =
+      twai_node_register_event_callbacks(s_node_hdl, &event_cbs, NULL);
+  if (event_ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to register TWAI event callbacks: %s",
+             esp_err_to_name(event_ret));
+    return event_ret;
+  }
 
-  ret = twai_start();
-  if (ret != ESP_OK)
-    return ret;
+  esp_err_t start_ret = twai_node_enable(s_node_hdl);
+  if (start_ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to enable TWAI node: %s", esp_err_to_name(start_ret));
+    return start_ret;
+  }
 
   if (xTaskCreate(can_rx_dispatcher_task, "can_dispatch", 4096, NULL, 5,
                   NULL) != pdPASS) {
@@ -113,16 +157,20 @@ esp_err_t can_register_cb(uint32_t id, uint32_t mask, can_bus_receive_cb_t cb,
   return ret;
 }
 
-esp_err_t can_send(uint32_t id, const uint8_t *data, uint8_t len,
+esp_err_t can_send(uint32_t id, uint8_t *data, uint8_t len,
                    uint16_t timeout_ms) {
   if (len > 8 || (data == NULL && len > 0))
     return ESP_ERR_INVALID_ARG;
 
-  twai_message_t tx_msg = {
-      .extd = 1, .rtr = 0, .ss = 0, .identifier = id, .data_length_code = len};
+  twai_frame_t tx_msg = {
+      .header.id = id,
+      .header.ide = true,
+      .header.rtr = false,
+      .header.dlc = len,
 
-  if (len > 0)
-    memcpy(tx_msg.data, data, len);
+      .buffer = data,
+      .buffer_len = len,
+  };
 
-  return twai_transmit(&tx_msg, pdMS_TO_TICKS(timeout_ms));
+  return twai_node_transmit(s_node_hdl, &tx_msg, pdMS_TO_TICKS(timeout_ms));
 }
