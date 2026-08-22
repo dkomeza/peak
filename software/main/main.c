@@ -15,6 +15,7 @@
 // #include "boot/boot.h"
 #include "buttons.h"
 #include "connection/can.h"
+#include "display_event_adapter.h"
 #include "driver/i2c_master.h"
 
 #include "io/battery.h"
@@ -457,10 +458,14 @@ static void peak_app_task(void *arg) {
 
   // boot_mode_t mode = boot(mountain_mode_callback);
 
+  set_boot_stage(PEAK_STAGE_DISPLAY);
+  ESP_ERROR_CHECK(display_start());
+
   // ESP_ERROR_CHECK(wifi_start("DEKANET", "tramwaj55"));
   set_boot_stage(PEAK_STAGE_CAN);
   ESP_ERROR_CHECK(can_init());
   set_boot_stage(PEAK_STAGE_ESC);
+  ESP_ERROR_CHECK(display_event_adapter_start());
   esc_peak_init();
   ESP_ERROR_CHECK(esc_peak_controller_init(&peak_controller));
 
@@ -496,8 +501,6 @@ static void peak_app_task(void *arg) {
   buttons_on(BTN_DOWN, BTN_EVENT_LONG_PRESS_START, button_down_long_started);
   buttons_on(BTN_DOWN, BTN_EVENT_LONG_PRESS_END, button_down_long_ended);
 
-  set_boot_stage(PEAK_STAGE_DISPLAY);
-  ESP_ERROR_CHECK(display_start());
   set_boot_stage(PEAK_STAGE_RUNNING);
   publish_boot_stage(PEAK_STAGE_RUNNING);
   publish_control_state();

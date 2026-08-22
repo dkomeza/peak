@@ -12,8 +12,10 @@
 static const char *TAG = "esc_peak";
 
 static SemaphoreHandle_t esc_peak_data_mutex;
-
 static esc_peak_data_t esc_peak_data = {0};
+static esc_peak_update_cb_t esc_peak_update_callback;
+static void *esc_peak_update_context;
+static bool esc_peak_initialized;
 
 static bool esc_peak_ensure_data_mutex(void) {
   if (esc_peak_data_mutex == NULL) {
@@ -156,14 +158,15 @@ static void esc_peak_parse_live_status(const uint8_t *data, uint8_t len) {
   esc_peak_data.power = read_be_u16(data + 2);
 }
 
-static void esc_peak_parse_walk_state(const cycleiq_frame_t *frame) {
+static bool esc_peak_parse_walk_state(const cycleiq_frame_t *frame) {
   bool active;
   if (!cycleiq_read_walk_state(frame, &active)) {
     ESP_LOGW(TAG, "invalid walk state telemetry frame");
-    return;
+    return false;
   }
 
   esc_peak_data.walk_active = active;
+  return true;
 }
 
 static void esc_peak_parse_trip_primary(const uint8_t *data, uint8_t len) {
@@ -224,6 +227,93 @@ static bool esc_peak_is_config_packet(peak_packet_type_t packet_type) {
          packet_type == PEAK_PACKET_TYPE_CONFIG_ACK;
 }
 
+static void esc_peak_fill_update(peak_packet_type_t packet_type,
+                                 esc_peak_update_t *update) {
+  switch (packet_type) {
+  case PEAK_PACKET_TYPE_BATTERY_STATUS:
+    update->type = ESC_PEAK_UPDATE_BATTERY_STATUS;
+    update->data.battery = (typeof(update->data.battery)){
+        .percentage = esc_peak_data.battery_percentage,
+        .voltage_v = esc_peak_data.battery_voltage,
+        .current_a = esc_peak_data.battery_current,
+    };
+    break;
+  case PEAK_PACKET_TYPE_BATTERY_ENERGY:
+    update->type = ESC_PEAK_UPDATE_BATTERY_ENERGY;
+    update->data.energy = (typeof(update->data.energy)){
+        .watt_hours = esc_peak_data.watt_hours,
+        .amp_hours = esc_peak_data.amp_hours,
+    };
+    break;
+  case PEAK_PACKET_TYPE_MOTOR_STATUS:
+    update->type = ESC_PEAK_UPDATE_MOTOR_STATUS;
+    update->data.motor = (typeof(update->data.motor)){
+        .motor_c = esc_peak_data.motor_temperature,
+        .controller_c = esc_peak_data.controller_temperature,
+        .current_a = esc_peak_data.motor_current,
+        .rpm = esc_peak_data.motor_rpm,
+    };
+    break;
+  case PEAK_PACKET_TYPE_CONTROLLER_STATE:
+    update->type = ESC_PEAK_UPDATE_CONTROLLER_STATE;
+    update->data.controller = (typeof(update->data.controller)){
+        .assist_level = esc_peak_data.assist_level,
+        .support_mode = esc_peak_data.support_mode,
+        .ride_mode = esc_peak_data.ride_mode,
+    };
+    break;
+  case PEAK_PACKET_TYPE_LIVE_STATUS:
+    update->type = ESC_PEAK_UPDATE_LIVE_STATUS;
+    update->data.live = (typeof(update->data.live)){
+        .speed_kph = esc_peak_data.speed,
+        .power_w = esc_peak_data.power,
+    };
+    break;
+  case PEAK_PACKET_TYPE_TRIP_PRIMARY:
+    update->type = ESC_PEAK_UPDATE_TRIP_PRIMARY;
+    update->data.trip_primary = (typeof(update->data.trip_primary)){
+        .distance_km = esc_peak_data.trip_distance,
+        .time_s = esc_peak_data.trip_time,
+    };
+    break;
+  case PEAK_PACKET_TYPE_TRIP_SECONDARY:
+    update->type = ESC_PEAK_UPDATE_TRIP_SECONDARY;
+    update->data.trip_secondary = (typeof(update->data.trip_secondary)){
+        .average_speed_kph = esc_peak_data.trip_average_speed,
+        .estimated_range_km = esc_peak_data.trip_estimated_range,
+    };
+    break;
+  case PEAK_PACKET_TYPE_WALK_STATE:
+    update->type = ESC_PEAK_UPDATE_WALK_STATE;
+    update->data.walk.active = esc_peak_data.walk_active;
+    break;
+  default:
+    break;
+  }
+}
+
+static bool esc_peak_packet_length_is_valid(peak_packet_type_t packet_type,
+                                             uint8_t length) {
+  switch (packet_type) {
+  case PEAK_PACKET_TYPE_BATTERY_STATUS:
+    return length == PEAK_PACKET_BATTERY_STATUS_LEN;
+  case PEAK_PACKET_TYPE_BATTERY_ENERGY:
+    return length == PEAK_PACKET_BATTERY_ENERGY_LEN;
+  case PEAK_PACKET_TYPE_MOTOR_STATUS:
+    return length == PEAK_PACKET_MOTOR_STATUS_LEN;
+  case PEAK_PACKET_TYPE_CONTROLLER_STATE:
+    return length == PEAK_PACKET_CONTROLLER_STATE_LEN;
+  case PEAK_PACKET_TYPE_LIVE_STATUS:
+    return length == PEAK_PACKET_LIVE_STATUS_LEN;
+  case PEAK_PACKET_TYPE_TRIP_PRIMARY:
+    return length == PEAK_PACKET_TRIP_PRIMARY_LEN;
+  case PEAK_PACKET_TYPE_TRIP_SECONDARY:
+    return length == PEAK_PACKET_TRIP_SECONDARY_LEN;
+  default:
+    return false;
+  }
+}
+
 void esc_peak_parse_data(uint32_t id, const uint8_t *data, uint8_t len,
                          void *user_data) {
   (void)user_data;
@@ -249,6 +339,8 @@ void esc_peak_parse_data(uint32_t id, const uint8_t *data, uint8_t len,
     return;
   }
 
+  bool valid_packet = esc_peak_packet_length_is_valid(packet_type, frame.len);
+  esc_peak_update_t update = {0};
   xSemaphoreTake(esc_peak_data_mutex, portMAX_DELAY);
 
   switch (packet_type) {
@@ -274,13 +366,20 @@ void esc_peak_parse_data(uint32_t id, const uint8_t *data, uint8_t len,
     esc_peak_parse_trip_secondary(frame.data, frame.len);
     break;
   case PEAK_PACKET_TYPE_WALK_STATE:
-    esc_peak_parse_walk_state(&frame);
+    valid_packet = esc_peak_parse_walk_state(&frame);
     break;
   default:
     break;
   }
 
+  if (valid_packet) {
+    esc_peak_fill_update(packet_type, &update);
+  }
   xSemaphoreGive(esc_peak_data_mutex);
+
+  if (valid_packet && esc_peak_update_callback != NULL) {
+    esc_peak_update_callback(&update, esc_peak_update_context);
+  }
 }
 
 void esc_peak_init(void) {
@@ -298,11 +397,24 @@ void esc_peak_init(void) {
     return;
   }
 
+  esc_peak_initialized = true;
+
   ret = esc_peak_request_protocol_version();
   if (ret != ESP_OK) {
     ESP_LOGW(TAG, "failed to request ESC protocol version: %s",
              esp_err_to_name(ret));
   }
+}
+
+esp_err_t esc_peak_set_update_callback(esc_peak_update_cb_t callback,
+                                       void *user_ctx) {
+  if (esc_peak_initialized || callback == NULL) {
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  esc_peak_update_callback = callback;
+  esc_peak_update_context = user_ctx;
+  return ESP_OK;
 }
 
 esp_err_t esc_peak_controller_init(esc_controller_t *out) {

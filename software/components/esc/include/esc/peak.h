@@ -37,10 +37,69 @@ typedef struct {
   uint8_t trip_estimated_range;
 } esc_peak_data_t;
 
+typedef enum {
+  ESC_PEAK_UPDATE_BATTERY_STATUS,
+  ESC_PEAK_UPDATE_BATTERY_ENERGY,
+  ESC_PEAK_UPDATE_MOTOR_STATUS,
+  ESC_PEAK_UPDATE_CONTROLLER_STATE,
+  ESC_PEAK_UPDATE_LIVE_STATUS,
+  ESC_PEAK_UPDATE_TRIP_PRIMARY,
+  ESC_PEAK_UPDATE_TRIP_SECONDARY,
+  ESC_PEAK_UPDATE_WALK_STATE,
+} esc_peak_update_type_t;
+
+typedef struct {
+  esc_peak_update_type_t type;
+  union {
+    struct {
+      uint8_t percentage;
+      float voltage_v;
+      float current_a;
+    } battery;
+    struct {
+      float watt_hours;
+      float amp_hours;
+    } energy;
+    struct {
+      int8_t motor_c;
+      int8_t controller_c;
+      float current_a;
+      uint16_t rpm;
+    } motor;
+    struct {
+      uint8_t assist_level;
+      uint8_t support_mode;
+      uint8_t ride_mode;
+    } controller;
+    struct {
+      float speed_kph;
+      uint16_t power_w;
+    } live;
+    struct {
+      float distance_km;
+      float time_s;
+    } trip_primary;
+    struct {
+      float average_speed_kph;
+      uint8_t estimated_range_km;
+    } trip_secondary;
+    struct {
+      bool active;
+    } walk;
+  } data;
+} esc_peak_update_t;
+
+typedef void (*esc_peak_update_cb_t)(const esc_peak_update_t *update,
+                                     void *user_ctx);
+
 /**
  * Initializes the ESC Peak module.
  */
 void esc_peak_init(void);
+
+/** Register one boot-time observer for decoded PEAK telemetry groups. */
+esp_err_t esc_peak_set_update_callback(esc_peak_update_cb_t callback,
+                                       void *user_ctx);
 
 /**
  * Initializes a caller-owned PEAK controller command handle.
