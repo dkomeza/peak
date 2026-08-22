@@ -1,6 +1,6 @@
 #include "display/display.h"
 
-#include "display_port.h"
+#include "port/display_port.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"

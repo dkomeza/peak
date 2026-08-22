@@ -1,8 +1,8 @@
 idf_component_register(
     SRCS
         "display.c"
+        "port/display_port.c"
         "ui/home.c"
-        "../../main/display/display_port.c"
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES
