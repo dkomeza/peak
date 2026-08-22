@@ -100,3 +100,12 @@ After editing:
 - Run `idf.py build` when ESP-IDF is available.
 - Mention any hardware behavior that still needs flashing or device testing.
 - Leave unrelated user changes untouched.
+
+## Commit Workflow
+
+- Commit often: create a small, cohesive commit after each meaningful,
+  verified implementation or refactoring step.
+- Do not combine unrelated changes in one commit. Preserve any pre-existing
+  user changes that are outside the current task.
+- Build or run the relevant verification before committing whenever practical;
+  state clearly when hardware validation remains outstanding.
