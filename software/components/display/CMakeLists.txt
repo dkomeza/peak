@@ -4,6 +4,8 @@ idf_component_register(
         "port/display_port.c"
         "port/st7701_commands.c"
         "ui/home.c"
+        "ui/metric_card.c"
+        "ui/model.c"
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES

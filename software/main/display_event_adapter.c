@@ -48,7 +48,7 @@ static void on_esc_update(const esc_peak_update_t *update, void *user_ctx) {
     };
     break;
   case ESC_PEAK_UPDATE_CONTROLLER_STATE:
-    event.type = DISPLAY_EVENT_CONTROL_STATE;
+    event.type = DISPLAY_EVENT_ESC_CONTROLLER_STATE;
     event.data.control = (typeof(event.data.control)){
         .gear = update->data.controller.assist_level,
         .support_mode = update->data.controller.support_mode,
@@ -63,21 +63,21 @@ static void on_esc_update(const esc_peak_update_t *update, void *user_ctx) {
     };
     break;
   case ESC_PEAK_UPDATE_TRIP_PRIMARY:
-    event.type = DISPLAY_EVENT_ESC_TRIP;
+    event.type = DISPLAY_EVENT_ESC_TRIP_PRIMARY;
     event.data.trip = (typeof(event.data.trip)){
         .distance_km = update->data.trip_primary.distance_km,
         .elapsed_s = update->data.trip_primary.time_s,
     };
     break;
   case ESC_PEAK_UPDATE_TRIP_SECONDARY:
-    event.type = DISPLAY_EVENT_ESC_TRIP;
+    event.type = DISPLAY_EVENT_ESC_TRIP_SECONDARY;
     event.data.trip = (typeof(event.data.trip)){
         .average_kph = update->data.trip_secondary.average_speed_kph,
         .range_km = update->data.trip_secondary.estimated_range_km,
     };
     break;
   case ESC_PEAK_UPDATE_WALK_STATE:
-    event.type = DISPLAY_EVENT_CONTROL_STATE;
+    event.type = DISPLAY_EVENT_ESC_WALK_STATE;
     event.data.control.walk_active = update->data.walk.active;
     break;
   default:

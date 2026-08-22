@@ -41,6 +41,8 @@ static bool is_critical_event(display_event_type_t type) {
   case DISPLAY_EVENT_BOOT_STAGE:
   case DISPLAY_EVENT_ACTION_RESULT:
   case DISPLAY_EVENT_CONTROL_STATE:
+  case DISPLAY_EVENT_ESC_CONTROLLER_STATE:
+  case DISPLAY_EVENT_ESC_WALK_STATE:
   case DISPLAY_EVENT_FAULT:
     return true;
   default:
@@ -48,10 +50,13 @@ static bool is_critical_event(display_event_type_t type) {
   }
 }
 
-static void process_queued_events(QueueHandle_t queue) {
+static void process_queued_events(QueueHandle_t queue, display_ui_model_t *model) {
   display_event_t event;
   while (xQueueReceive(queue, &event, 0) == pdTRUE) {
     display_home_apply_event(&event);
+    if (display_ui_model_apply(model, &event)) {
+      display_home_update(model);
+    }
   }
 }
 
@@ -78,15 +83,19 @@ static void display_ui_task(void *arg) {
     return;
   }
 
+  display_ui_model_t model = {0};
   for (;;) {
-    process_queued_events(s_runtime.critical_queue);
-    process_queued_events(s_runtime.telemetry_queue);
+    process_queued_events(s_runtime.critical_queue, &model);
+    process_queued_events(s_runtime.telemetry_queue, &model);
 
     uint32_t delay_ms = display_port_timer_handler();
     display_event_t event;
     if (xQueueReceive(s_runtime.critical_queue, &event,
                       wait_ticks(delay_ms)) == pdTRUE) {
       display_home_apply_event(&event);
+      if (display_ui_model_apply(&model, &event)) {
+        display_home_update(&model);
+      }
     }
   }
 }
