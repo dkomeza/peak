@@ -12,7 +12,7 @@
 #include <inttypes.h>
 #include <nvs_flash.h>
 
-// #include "boot/boot.h"
+#include "boot/boot.h"
 #include "buttons.h"
 #include "connection/can.h"
 #include "display_event_adapter.h"
@@ -64,6 +64,7 @@ typedef enum {
   PEAK_BUTTON_EVENT_POWER_LONG,
   PEAK_BUTTON_EVENT_DOWN_LONG_START,
   PEAK_BUTTON_EVENT_DOWN_LONG_END,
+  PEAK_BUTTON_EVENT_BOOT_MOUNTAIN,
 } peak_button_event_t;
 
 static const char *TAG = "peak_app";
@@ -234,6 +235,16 @@ static void handle_button_power_long(void) {
   log_esc_command_result("POWER long press: toggle ride mode", ret);
 }
 
+static void handle_boot_mountain_mode(void) {
+  esp_err_t ret =
+      esc_controller_set_ride_mode(&peak_controller, ESC_RIDE_MODE_MOUNTAIN);
+  if (ret == ESP_OK) {
+    current_ride_mode = ESC_RIDE_MODE_MOUNTAIN;
+  }
+  publish_action_result(DISPLAY_ACTION_RIDE_MODE, ret);
+  log_esc_command_result("Mountain boot mode", ret);
+}
+
 static void handle_button_down_long_start(void) {
   if (walk_command_active) {
     return;
@@ -331,6 +342,9 @@ static void handle_button_event(peak_button_event_t event) {
   case PEAK_BUTTON_EVENT_DOWN_LONG_END:
     handle_button_down_long_end();
     break;
+  case PEAK_BUTTON_EVENT_BOOT_MOUNTAIN:
+    handle_boot_mountain_mode();
+    break;
   default:
     break;
   }
@@ -340,7 +354,19 @@ static void handle_button_event(peak_button_event_t event) {
  * Called when the device is booted into mountain mode. This will be used
  * to send appropriate commands to the ESC and change the UI
  */
-void mountain_mode_callback(void) {}
+static void mountain_mode_callback(void) {
+  queue_button_event(PEAK_BUTTON_EVENT_BOOT_MOUNTAIN);
+}
+
+static void start_cycleiq_controller(boot_mode_t mode) {
+  if (mode == BOOT_MODE_CONFIG) {
+    ESP_LOGW(TAG, "Configuration boot selected; starting CycleIQ normally");
+  }
+
+  esp_err_t ret = esc_controller_set_power(&peak_controller, true);
+  publish_action_result(DISPLAY_ACTION_POWER, ret);
+  log_esc_command_result("CycleIQ power on", ret);
+}
 
 static void nvs_init(void) {
   esp_err_t ret = nvs_flash_init();
@@ -456,7 +482,7 @@ static void peak_app_task(void *arg) {
 
   buttons_init();
 
-  // boot_mode_t mode = boot(mountain_mode_callback);
+  boot_mode_t mode = boot(mountain_mode_callback);
 
   set_boot_stage(PEAK_STAGE_DISPLAY);
   ESP_ERROR_CHECK(display_start());
@@ -468,6 +494,7 @@ static void peak_app_task(void *arg) {
   ESP_ERROR_CHECK(display_event_adapter_start());
   esc_peak_init();
   ESP_ERROR_CHECK(esc_peak_controller_init(&peak_controller));
+  start_cycleiq_controller(mode);
 
   set_boot_stage(PEAK_STAGE_WIFI);
   log_init_error("Wi-Fi AP", wifi_start_ap());
