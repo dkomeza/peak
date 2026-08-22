@@ -66,7 +66,7 @@ static esp_err_t create_st7701_panel(esp_lcd_dsi_bus_handle_t bus,
               .vsync_front_porch = 8,
           },
   };
-  const st7701_vendor_config_t vendor_config = {
+  st7701_vendor_config_t vendor_config = {
       .init_cmds = commands,
       .init_cmds_size = command_count,
       .mipi_config =
@@ -79,7 +79,7 @@ static esp_err_t create_st7701_panel(esp_lcd_dsi_bus_handle_t bus,
               .use_mipi_interface = 1,
           },
   };
-  const esp_lcd_panel_dev_config_t config = {
+  esp_lcd_panel_dev_config_t config = {
       .reset_gpio_num = DISPLAY_RESET_GPIO,
       .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
       .bits_per_pixel = 24,

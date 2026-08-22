@@ -6,7 +6,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "home.h"
+#include "ui/home.h"
 #include "lvgl.h"
 
 #define DISPLAY_UI_TASK_STACK_SIZE 6144
