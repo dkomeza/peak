@@ -21,7 +21,7 @@
 #include "io/ltr329.h"
 #include "io/t117.h"
 
-#include "display/display_port.h"
+#include "display/display.h"
 #include "esc/peak.h"
 
 #include "vesc/vesc_bridge.h"
@@ -97,6 +97,56 @@ static void log_esc_command_result(const char *action, esp_err_t ret) {
   }
 }
 
+static void publish_display_event(const display_event_t *event) {
+  esp_err_t ret = display_event_publish(event);
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "Display event dropped: %s", esp_err_to_name(ret));
+  }
+}
+
+static void publish_control_state(void) {
+  display_event_t event = {
+      .type = DISPLAY_EVENT_CONTROL_STATE,
+      .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000ULL),
+      .data.control =
+          {
+              .gear = current_gear,
+              .support_mode = (uint8_t)current_support_mode,
+              .ride_mode = (uint8_t)current_ride_mode,
+              .walk_active = walk_command_active,
+          },
+  };
+  publish_display_event(&event);
+}
+
+static void publish_action_result(display_action_t action, esp_err_t result) {
+  display_event_t event = {
+      .type = DISPLAY_EVENT_ACTION_RESULT,
+      .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000ULL),
+      .data.action =
+          {
+              .action = action,
+              .result = result,
+          },
+  };
+  publish_display_event(&event);
+  if (result == ESP_OK) {
+    publish_control_state();
+  }
+}
+
+static void publish_boot_stage(peak_boot_stage_t stage) {
+  display_event_t event = {
+      .type = DISPLAY_EVENT_BOOT_STAGE,
+      .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000ULL),
+      .data.boot =
+          {
+              .stage = (uint8_t)stage,
+          },
+  };
+  publish_display_event(&event);
+}
+
 static void queue_button_event(peak_button_event_t event) {
   if (button_event_queue == NULL) {
     return;
@@ -140,6 +190,7 @@ static void handle_button_up_click(void) {
   if (ret == ESP_OK) {
     current_gear = next_gear;
   }
+  publish_action_result(DISPLAY_ACTION_GEAR, ret);
   log_esc_command_result("UP click: gear up", ret);
 }
 
@@ -152,6 +203,7 @@ static void handle_button_down_click(void) {
   if (ret == ESP_OK) {
     current_gear = next_gear;
   }
+  publish_action_result(DISPLAY_ACTION_GEAR, ret);
   log_esc_command_result("DOWN click: gear down", ret);
 }
 
@@ -164,6 +216,7 @@ static void handle_button_up_long(void) {
   if (ret == ESP_OK) {
     current_support_mode = next_mode;
   }
+  publish_action_result(DISPLAY_ACTION_SUPPORT_MODE, ret);
   log_esc_command_result("UP long press: toggle support mode", ret);
 }
 
@@ -176,6 +229,7 @@ static void handle_button_power_long(void) {
   if (ret == ESP_OK) {
     current_ride_mode = next_mode;
   }
+  publish_action_result(DISPLAY_ACTION_RIDE_MODE, ret);
   log_esc_command_result("POWER long press: toggle ride mode", ret);
 }
 
@@ -190,6 +244,7 @@ static void handle_button_down_long_start(void) {
   next_walk_refresh_ms = now_ms + PEAK_WALK_REFRESH_MS;
   last_walk_refresh_error_ms = ret == ESP_OK ? 0 : now_ms;
 
+  publish_action_result(DISPLAY_ACTION_WALK_MODE, ret);
   log_esc_command_result("DOWN long press: start walk mode", ret);
 }
 
@@ -200,6 +255,7 @@ static void stop_walk_mode(const char *action) {
 
   walk_command_active = false;
   esp_err_t ret = esc_controller_set_walk_mode(&peak_controller, false);
+  publish_action_result(DISPLAY_ACTION_WALK_MODE, ret);
   log_esc_command_result(action, ret);
 }
 
@@ -387,8 +443,6 @@ static void log_reset_context(void) {
 static void peak_app_task(void *arg) {
   (void)arg;
   log_reset_context();
-  uint32_t previous_boot_stage = last_boot_stage;
-  esp_reset_reason_t reset_reason = esp_reset_reason();
   set_boot_stage(PEAK_STAGE_APP_START);
 
   set_boot_stage(PEAK_STAGE_NVS);
@@ -443,15 +497,10 @@ static void peak_app_task(void *arg) {
   buttons_on(BTN_DOWN, BTN_EVENT_LONG_PRESS_END, button_down_long_ended);
 
   set_boot_stage(PEAK_STAGE_DISPLAY);
-  if (reset_reason != ESP_RST_POWERON && reset_reason != ESP_RST_UNKNOWN) {
-    char line1[32];
-    char line2[32];
-    snprintf(line1, sizeof(line1), "RESET %s", reset_reason_name(reset_reason));
-    snprintf(line2, sizeof(line2), "LAST %s",
-             boot_stage_name(previous_boot_stage));
-  }
-  ESP_ERROR_CHECK(display_port_init());
+  ESP_ERROR_CHECK(display_start());
   set_boot_stage(PEAK_STAGE_RUNNING);
+  publish_boot_stage(PEAK_STAGE_RUNNING);
+  publish_control_state();
 
   for (;;) {
     uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
