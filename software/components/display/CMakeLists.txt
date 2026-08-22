@@ -2,6 +2,7 @@ idf_component_register(
     SRCS
         "display.c"
         "port/display_port.c"
+        "port/st7701_commands.c"
         "ui/home.c"
     INCLUDE_DIRS
         "include"

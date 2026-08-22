@@ -11,6 +11,4 @@
 esp_err_t display_port_init(void);
 uint32_t display_port_timer_handler(void);
 
-uint32_t display_cpu_idle_percent(void);
-
 #endif
