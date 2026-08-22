@@ -3,8 +3,8 @@
 #include "freertos/idf_additions.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
-#include <esp_err.h>
 #include <esp_attr.h>
+#include <esp_err.h>
 #include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <esp_task.h>
@@ -21,8 +21,7 @@
 #include "io/ltr329.h"
 #include "io/t117.h"
 
-#include "display/display.h"
-
+#include "display/display_port.h"
 #include "esc/peak.h"
 
 #include "vesc/vesc_bridge.h"
@@ -108,9 +107,7 @@ static void queue_button_event(peak_button_event_t event) {
   }
 }
 
-void button_up_pressed(void) {
-  queue_button_event(PEAK_BUTTON_EVENT_UP_CLICK);
-}
+void button_up_pressed(void) { queue_button_event(PEAK_BUTTON_EVENT_UP_CLICK); }
 
 void button_power_pressed(void) {
   queue_button_event(PEAK_BUTTON_EVENT_POWER_CLICK);
@@ -137,29 +134,24 @@ void button_down_long_ended(void) {
 }
 
 static void handle_button_up_click(void) {
-  uint8_t next_gear = current_gear < PEAK_MAX_GEAR ? current_gear + 1
-                                                   : current_gear;
+  uint8_t next_gear =
+      current_gear < PEAK_MAX_GEAR ? current_gear + 1 : current_gear;
   esp_err_t ret = esc_controller_set_gear(&peak_controller, next_gear);
   if (ret == ESP_OK) {
     current_gear = next_gear;
   }
-  display_show_button_event(DISPLAY_BUTTON_EVENT_UP, ret != ESP_OK);
   log_esc_command_result("UP click: gear up", ret);
 }
 
-static void handle_button_power_click(void) {
-  display_show_button_event(DISPLAY_BUTTON_EVENT_POWER, false);
-  ESP_LOGI(TAG, "POWER click");
-}
+static void handle_button_power_click(void) { ESP_LOGI(TAG, "POWER click"); }
 
 static void handle_button_down_click(void) {
-  uint8_t next_gear = current_gear > PEAK_MIN_GEAR ? current_gear - 1
-                                                   : current_gear;
+  uint8_t next_gear =
+      current_gear > PEAK_MIN_GEAR ? current_gear - 1 : current_gear;
   esp_err_t ret = esc_controller_set_gear(&peak_controller, next_gear);
   if (ret == ESP_OK) {
     current_gear = next_gear;
   }
-  display_show_button_event(DISPLAY_BUTTON_EVENT_DOWN, ret != ESP_OK);
   log_esc_command_result("DOWN click: gear down", ret);
 }
 
@@ -172,7 +164,6 @@ static void handle_button_up_long(void) {
   if (ret == ESP_OK) {
     current_support_mode = next_mode;
   }
-  display_show_button_event(DISPLAY_BUTTON_EVENT_UP, ret != ESP_OK);
   log_esc_command_result("UP long press: toggle support mode", ret);
 }
 
@@ -185,7 +176,6 @@ static void handle_button_power_long(void) {
   if (ret == ESP_OK) {
     current_ride_mode = next_mode;
   }
-  display_show_button_event(DISPLAY_BUTTON_EVENT_POWER, ret != ESP_OK);
   log_esc_command_result("POWER long press: toggle ride mode", ret);
 }
 
@@ -200,7 +190,6 @@ static void handle_button_down_long_start(void) {
   next_walk_refresh_ms = now_ms + PEAK_WALK_REFRESH_MS;
   last_walk_refresh_error_ms = ret == ESP_OK ? 0 : now_ms;
 
-  display_show_button_event(DISPLAY_BUTTON_EVENT_DOWN, ret != ESP_OK);
   log_esc_command_result("DOWN long press: start walk mode", ret);
 }
 
@@ -211,7 +200,6 @@ static void stop_walk_mode(const char *action) {
 
   walk_command_active = false;
   esp_err_t ret = esc_controller_set_walk_mode(&peak_controller, false);
-  display_show_button_event(DISPLAY_BUTTON_EVENT_DOWN, ret != ESP_OK);
   log_esc_command_result(action, ret);
 }
 
@@ -391,8 +379,8 @@ static void log_reset_context(void) {
   ESP_LOGW(TAG,
            "Boot #%" PRIu32 ", reset reason=%s(%d), last stage=%s, free "
            "heap=%" PRIu32,
-           boot_count, reset_reason_name(esp_reset_reason()), esp_reset_reason(),
-           boot_stage_name(last_boot_stage),
+           boot_count, reset_reason_name(esp_reset_reason()),
+           esp_reset_reason(), boot_stage_name(last_boot_stage),
            (uint32_t)heap_caps_get_free_size(MALLOC_CAP_8BIT));
 }
 
@@ -431,10 +419,10 @@ static void peak_app_task(void *arg) {
       &transport_udp,
       &transport_ble,
   };
-  log_init_error("VESC bridge",
-                 vesc_bridge_start(vesc_transports,
-                                   sizeof(vesc_transports) /
-                                       sizeof(vesc_transports[0])));
+  log_init_error(
+      "VESC bridge",
+      vesc_bridge_start(vesc_transports,
+                        sizeof(vesc_transports) / sizeof(vesc_transports[0])));
   set_boot_stage(PEAK_STAGE_BLE_OTA);
   log_init_error("BLE OTA", ble_ota_start());
 
@@ -459,10 +447,10 @@ static void peak_app_task(void *arg) {
     char line1[32];
     char line2[32];
     snprintf(line1, sizeof(line1), "RESET %s", reset_reason_name(reset_reason));
-    snprintf(line2, sizeof(line2), "LAST %s", boot_stage_name(previous_boot_stage));
-    display_set_boot_diagnostic(line1, line2, PEAK_BOOT_DIAGNOSTIC_MS);
+    snprintf(line2, sizeof(line2), "LAST %s",
+             boot_stage_name(previous_boot_stage));
   }
-  ESP_ERROR_CHECK(display_init());
+  ESP_ERROR_CHECK(display_port_init());
   set_boot_stage(PEAK_STAGE_RUNNING);
 
   for (;;) {

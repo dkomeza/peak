@@ -1,32 +1,55 @@
-#include "display.h"
+#include "display_port.h"
 #include "driver/gpio.h"
-#include "esc/peak.h"
 #include "esp_check.h"
+#include "esp_heap_caps.h"
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_st7701.h"
 #include "esp_ldo_regulator.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
+#include "freertos/task.h"
+#include "lvgl.h"
 #include <stdio.h>
 #include <string.h>
 
-static const char *TAG = "PEAK";
-#define DISPLAY_TASK_STACK_SIZE 8192
-#define DISPLAY_ERROR_LOG_INTERVAL_MS 1000
-#define DISPLAY_BOOT_DIAG_LINE_MAX 32
+static const char *TAG = "display_port";
+#define DISPLAY_H_RES 480
+#define DISPLAY_V_RES 640
+#define DISPLAY_LVGL_DRAW_ROWS 40
 
-static portMUX_TYPE s_button_event_lock = portMUX_INITIALIZER_UNLOCKED;
-static display_button_event_t s_button_event = DISPLAY_BUTTON_EVENT_NONE;
-static bool s_button_event_error = false;
-static uint32_t s_button_event_until_ms = 0;
-static portMUX_TYPE s_boot_diag_lock = portMUX_INITIALIZER_UNLOCKED;
-static char s_boot_diag_line1[DISPLAY_BOOT_DIAG_LINE_MAX];
-static char s_boot_diag_line2[DISPLAY_BOOT_DIAG_LINE_MAX];
-static uint32_t s_boot_diag_until_ms = 0;
+static esp_lcd_panel_handle_t s_dpi_panel;
+static lv_display_t *s_lvgl_display;
+static void *s_lvgl_draw_buffers[2];
 
-esp_lcd_panel_handle_t dpi_panel;
+uint32_t display_cpu_idle_percent(void) {
+  static configRUN_TIME_COUNTER_TYPE previous_idle_time;
+  static int64_t previous_sample_us;
+
+  const int64_t sample_us = esp_timer_get_time();
+  const configRUN_TIME_COUNTER_TYPE idle_time = ulTaskGetIdleRunTimeCounter();
+
+  if (previous_sample_us == 0) {
+    previous_sample_us = sample_us;
+    previous_idle_time = idle_time;
+    return 100;
+  }
+
+  const uint64_t elapsed_capacity =
+      (uint64_t)(sample_us - previous_sample_us) * configNUMBER_OF_CORES;
+  const uint64_t idle_delta = idle_time - previous_idle_time;
+  previous_sample_us = sample_us;
+  previous_idle_time = idle_time;
+
+  if (elapsed_capacity == 0) {
+    return 0;
+  }
+
+  return (uint32_t)((LV_MIN(idle_delta, elapsed_capacity) * 100U) /
+                    elapsed_capacity);
+}
 
 static const st7701_lcd_init_cmd_t init_cmds[] = {
     // --- Page 3 ---
@@ -114,54 +137,18 @@ static const st7701_lcd_init_cmd_t init_cmds[] = {
     {0x29, (uint8_t[]){0x00}, 0, 25}, // Display ON + Delay
 };
 
-static const char *support_mode_text(cycleiq_support_mode_t mode) {
-  return mode == CYCLEIQ_MODE_TORQUE ? "TQ" : "PAS";
-}
+static esp_err_t panel_init(esp_lcd_panel_handle_t *panel_out) {
+  ESP_RETURN_ON_FALSE(panel_out != NULL, ESP_ERR_INVALID_ARG, TAG,
+                      "Panel output handle is required");
 
-static const char *button_event_text(display_button_event_t event, bool error) {
-  switch (event) {
-  case DISPLAY_BUTTON_EVENT_UP:
-    return error ? "UP ERR" : "UP";
-  case DISPLAY_BUTTON_EVENT_POWER:
-    return error ? "PWR ERR" : "PWR";
-  case DISPLAY_BUTTON_EVENT_DOWN:
-    return error ? "DOWN ERR" : "DOWN";
-  default:
-    return "";
-  }
-}
-
-void display_show_button_event(display_button_event_t event, bool error) {
-  uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-
-  taskENTER_CRITICAL(&s_button_event_lock);
-  s_button_event = event;
-  s_button_event_error = error;
-  s_button_event_until_ms = now_ms + 2000;
-  taskEXIT_CRITICAL(&s_button_event_lock);
-}
-
-void display_set_boot_diagnostic(const char *line1, const char *line2,
-                                 uint32_t duration_ms) {
-  uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-
-  taskENTER_CRITICAL(&s_boot_diag_lock);
-  snprintf(s_boot_diag_line1, sizeof(s_boot_diag_line1), "%s",
-           line1 != NULL ? line1 : "");
-  snprintf(s_boot_diag_line2, sizeof(s_boot_diag_line2), "%s",
-           line2 != NULL ? line2 : "");
-  s_boot_diag_until_ms = now_ms + duration_ms;
-  taskEXIT_CRITICAL(&s_boot_diag_lock);
-}
-
-esp_lcd_panel_handle_t init(void) {
   // LDO Power
   esp_ldo_channel_handle_t ldo_mipi_phy = NULL;
   esp_ldo_channel_config_t ldo_cfg = {
       .chan_id = 3,
       .voltage_mv = 2500,
   };
-  ESP_ERROR_CHECK(esp_ldo_acquire_channel(&ldo_cfg, &ldo_mipi_phy));
+  ESP_RETURN_ON_ERROR(esp_ldo_acquire_channel(&ldo_cfg, &ldo_mipi_phy), TAG,
+                      "Failed to power MIPI DSI PHY");
 
   // 1. DSI bus
   ESP_LOGI(TAG, "Initializing DSI bus...");
@@ -172,7 +159,8 @@ esp_lcd_panel_handle_t init(void) {
       .phy_clk_src = MIPI_DSI_PHY_CLK_SRC_DEFAULT,
       .lane_bit_rate_mbps = 500,
   };
-  ESP_ERROR_CHECK(esp_lcd_new_dsi_bus(&dsi_bus_cfg, &dsi_bus));
+  ESP_RETURN_ON_ERROR(esp_lcd_new_dsi_bus(&dsi_bus_cfg, &dsi_bus), TAG,
+                      "Failed to create DSI bus");
   ESP_LOGI(TAG, "DSI bus created successfully!");
 
   // 2. DBI panel IO (command channel)
@@ -182,7 +170,8 @@ esp_lcd_panel_handle_t init(void) {
       .lcd_cmd_bits = 8,
       .lcd_param_bits = 8,
   };
-  ESP_ERROR_CHECK(esp_lcd_new_panel_io_dbi(dsi_bus, &dbi_cfg, &dbi_io));
+  ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_dbi(dsi_bus, &dbi_cfg, &dbi_io), TAG,
+                      "Failed to create DBI panel IO");
   ESP_LOGI(TAG, "DBI panel IO created successfully!");
 
   // 3. DPI panel configuration
@@ -194,8 +183,8 @@ esp_lcd_panel_handle_t init(void) {
       .in_color_format = LCD_COLOR_FMT_RGB888,
       .video_timing =
           {
-              .h_size = 480,
-              .v_size = 640,
+              .h_size = DISPLAY_H_RES,
+              .v_size = DISPLAY_V_RES,
               .hsync_pulse_width = 2,
               .hsync_back_porch = 6,
               .hsync_front_porch = 14,
@@ -222,44 +211,103 @@ esp_lcd_panel_handle_t init(void) {
   };
   esp_lcd_panel_dev_config_t panel_dev_cfg = {
       .reset_gpio_num = 40, // RST pin
-      .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
+      .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
       .bits_per_pixel = 24,
       .vendor_config = &vendor_cfg,
   };
 
   esp_lcd_panel_handle_t dpi_panel;
-  ESP_ERROR_CHECK(esp_lcd_new_panel_st7701(dbi_io, &panel_dev_cfg, &dpi_panel));
+  ESP_RETURN_ON_ERROR(
+      esp_lcd_new_panel_st7701(dbi_io, &panel_dev_cfg, &dpi_panel), TAG,
+      "Failed to create ST7701 panel");
   ESP_LOGI(TAG, "ST7701 panel created successfully!");
-  ESP_ERROR_CHECK(esp_lcd_panel_reset(dpi_panel));
+  ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(dpi_panel), TAG,
+                      "Failed to reset panel");
   ESP_LOGI(TAG, "Panel reset successfully!");
-  ESP_ERROR_CHECK(esp_lcd_panel_init(dpi_panel));
+  ESP_RETURN_ON_ERROR(esp_lcd_panel_init(dpi_panel), TAG,
+                      "Failed to initialize panel");
   ESP_LOGI(TAG, "Panel initialized successfully!");
 
   // Backlight enable
-  gpio_set_direction(10, GPIO_MODE_OUTPUT);
-  gpio_set_level(10, 1);
+  ESP_RETURN_ON_ERROR(gpio_set_direction(GPIO_NUM_10, GPIO_MODE_OUTPUT), TAG,
+                      "Failed to configure backlight GPIO");
+  ESP_RETURN_ON_ERROR(gpio_set_level(GPIO_NUM_10, 1), TAG,
+                      "Failed to enable backlight");
 
-  return dpi_panel;
+  *panel_out = dpi_panel;
+  return ESP_OK;
 }
 
-void display_task(void *arg) {
-  (void)arg;
-  uint32_t last_error_log_ms = 0;
+static uint32_t lvgl_tick_get_ms(void) {
+  return (uint32_t)(esp_timer_get_time() / 1000ULL);
+}
 
-  for (;;) {
-    vTaskDelay(pdMS_TO_TICKS(10));
+static void lvgl_flush_cb(lv_display_t *display, const lv_area_t *area,
+                          uint8_t *color_map) {
+  esp_err_t ret = esp_lcd_panel_draw_bitmap(
+      s_dpi_panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, color_map);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "LVGL display flush failed: %s", esp_err_to_name(ret));
+    lv_display_flush_ready(display);
   }
 }
 
-esp_err_t display_init(void) {
-  dpi_panel = init();
+static bool lvgl_color_trans_done_cb(esp_lcd_panel_handle_t panel,
+                                     esp_lcd_dpi_panel_event_data_t *event,
+                                     void *user_ctx) {
+  lv_display_t *display = user_ctx;
+  lv_display_flush_ready(display);
+  return false;
+}
 
-  BaseType_t ret = xTaskCreate(display_task, "display_task",
-                               DISPLAY_TASK_STACK_SIZE, NULL, 5, NULL);
-  if (ret != pdPASS) {
-    ESP_LOGE(TAG, "Failed to create display task");
-    return ESP_ERR_NO_MEM;
+static esp_err_t lvgl_init(esp_lcd_panel_handle_t panel) {
+  ESP_RETURN_ON_FALSE(panel != NULL, ESP_ERR_INVALID_ARG, TAG,
+                      "LVGL requires a display panel");
+
+  lv_init();
+  lv_tick_set_cb(lvgl_tick_get_ms);
+
+  const size_t draw_buffer_size =
+      DISPLAY_H_RES * DISPLAY_LVGL_DRAW_ROWS *
+      lv_color_format_get_size(LV_COLOR_FORMAT_RGB888);
+
+  for (size_t i = 0; i < 2; ++i) {
+    s_lvgl_draw_buffers[i] =
+        heap_caps_aligned_alloc(LV_DRAW_BUF_ALIGN, draw_buffer_size,
+                                MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (s_lvgl_draw_buffers[i] == NULL) {
+      ESP_LOGE(TAG, "Failed to allocate LVGL draw buffer %u", (unsigned)i);
+      return ESP_ERR_NO_MEM;
+    }
   }
+
+  s_lvgl_display = lv_display_create(DISPLAY_H_RES, DISPLAY_V_RES);
+  ESP_RETURN_ON_FALSE(s_lvgl_display != NULL, ESP_ERR_NO_MEM, TAG,
+                      "Failed to create LVGL display");
+  lv_display_set_default(s_lvgl_display);
+  lv_display_set_color_format(s_lvgl_display, LV_COLOR_FORMAT_RGB888);
+  lv_display_set_buffers(s_lvgl_display, s_lvgl_draw_buffers[0],
+                         s_lvgl_draw_buffers[1], draw_buffer_size,
+                         LV_DISPLAY_RENDER_MODE_PARTIAL);
+  lv_display_set_flush_cb(s_lvgl_display, lvgl_flush_cb);
+
+  const esp_lcd_dpi_panel_event_callbacks_t panel_callbacks = {
+      .on_color_trans_done = lvgl_color_trans_done_cb,
+  };
+  ESP_RETURN_ON_ERROR(esp_lcd_dpi_panel_register_event_callbacks(
+                          panel, &panel_callbacks, s_lvgl_display),
+                      TAG, "Failed to register LVGL panel callback");
+
+  ESP_LOGI(TAG, "LVGL initialized for %dx%d RGB888 MIPI DSI display",
+           DISPLAY_H_RES, DISPLAY_V_RES);
 
   return ESP_OK;
 }
+
+esp_err_t display_port_init(void) {
+  ESP_RETURN_ON_ERROR(panel_init(&s_dpi_panel), TAG,
+                      "Display panel initialization failed");
+  return lvgl_init(s_dpi_panel);
+}
+
+uint32_t display_port_timer_handler(void) { return lv_timer_handler(); }
