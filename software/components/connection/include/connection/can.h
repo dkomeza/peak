@@ -31,7 +31,10 @@ esp_err_t can_register_cb(uint32_t id, uint32_t mask, can_bus_receive_cb_t cb,
 /**
  * Thread-safe CAN transmit.
  */
-esp_err_t can_send(uint32_t id, uint8_t *data, uint8_t len,
+esp_err_t can_send(uint32_t id, const uint8_t *data, uint8_t len,
                    uint16_t timeout_ms);
+
+/** Wait for all queued CAN frames to finish transmitting. */
+esp_err_t can_wait_for_tx(uint16_t timeout_ms);
 
 #endif

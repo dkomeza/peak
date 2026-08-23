@@ -31,17 +31,51 @@ typedef struct {
   uint8_t buffer[8];
 } can_rx_msg_t;
 
+typedef struct {
+  twai_frame_t frame;
+  uint8_t buffer[8];
+  bool in_use;
+} can_tx_slot_t;
+
 static can_subscriber_t s_subscribers[CAN_MAX_CALLBACKS];
+static can_tx_slot_t s_tx_slots[CAN_TX_QUEUE_DEPTH];
 static SemaphoreHandle_t s_mutex = NULL;
 static bool s_initialized = false;
 static twai_node_handle_t s_node_hdl = NULL;
 static QueueHandle_t s_rx_queue = NULL;
+static portMUX_TYPE s_tx_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static can_tx_slot_t *can_acquire_tx_slot(void) {
+  can_tx_slot_t *slot = NULL;
+  portENTER_CRITICAL(&s_tx_lock);
+  for (size_t i = 0; i < CAN_TX_QUEUE_DEPTH; i++) {
+    if (!s_tx_slots[i].in_use) {
+      s_tx_slots[i].in_use = true;
+      slot = &s_tx_slots[i];
+      break;
+    }
+  }
+  portEXIT_CRITICAL(&s_tx_lock);
+  return slot;
+}
+
+static void can_release_tx_slot(can_tx_slot_t *slot) {
+  portENTER_CRITICAL(&s_tx_lock);
+  slot->in_use = false;
+  portEXIT_CRITICAL(&s_tx_lock);
+}
+
+static void can_release_tx_slot_from_isr(can_tx_slot_t *slot) {
+  portENTER_CRITICAL_ISR(&s_tx_lock);
+  slot->in_use = false;
+  portEXIT_CRITICAL_ISR(&s_tx_lock);
+}
 
 static void can_rx_dispatcher_task(void *arg) {
   twai_frame_t rx_msg;
 
   while (1) {
-    if (xQueueReceive(s_rx_queue, &rx_msg, portMAX_DELAY) == ESP_OK) {
+    if (xQueueReceive(s_rx_queue, &rx_msg, portMAX_DELAY) == pdTRUE) {
       if (!rx_msg.header.ide || rx_msg.header.rtr) {
         continue;
       }
@@ -82,6 +116,22 @@ static bool can_on_rx_done(twai_node_handle_t node,
   return (higher_priority_task_woken == pdTRUE);
 }
 
+static bool can_on_tx_done(twai_node_handle_t node,
+                           const twai_tx_done_event_data_t *edata,
+                           void *user_ctx) {
+  (void)node;
+  (void)user_ctx;
+
+  for (size_t i = 0; i < CAN_TX_QUEUE_DEPTH; i++) {
+    if (edata->done_tx_frame == &s_tx_slots[i].frame) {
+      can_release_tx_slot_from_isr(&s_tx_slots[i]);
+      break;
+    }
+  }
+
+  return false;
+}
+
 esp_err_t can_init(void) {
   if (s_initialized)
     return ESP_OK;
@@ -91,6 +141,7 @@ esp_err_t can_init(void) {
     return ESP_ERR_NO_MEM;
 
   memset(s_subscribers, 0, sizeof(s_subscribers));
+  memset(s_tx_slots, 0, sizeof(s_tx_slots));
 
   twai_onchip_node_config_t node_config = {
       .io_cfg.tx = CAN_TX_GPIO,
@@ -108,6 +159,7 @@ esp_err_t can_init(void) {
   s_rx_queue = xQueueCreate(CAN_RX_QUEUE_DEPTH, sizeof(can_rx_msg_t));
   twai_event_callbacks_t event_cbs = {
       .on_rx_done = can_on_rx_done,
+      .on_tx_done = can_on_tx_done,
   };
   esp_err_t event_ret =
       twai_node_register_event_callbacks(s_node_hdl, &event_cbs, NULL);
@@ -157,20 +209,42 @@ esp_err_t can_register_cb(uint32_t id, uint32_t mask, can_bus_receive_cb_t cb,
   return ret;
 }
 
-esp_err_t can_send(uint32_t id, uint8_t *data, uint8_t len,
+esp_err_t can_send(uint32_t id, const uint8_t *data, uint8_t len,
                    uint16_t timeout_ms) {
-  if (len > 8 || (data == NULL && len > 0))
+  if (!s_initialized || len > 8 || (data == NULL && len > 0))
     return ESP_ERR_INVALID_ARG;
 
-  twai_frame_t tx_msg = {
-      .header.id = id,
-      .header.ide = true,
-      .header.rtr = false,
-      .header.dlc = len,
+  can_tx_slot_t *slot = can_acquire_tx_slot();
+  if (slot == NULL) {
+    return ESP_ERR_TIMEOUT;
+  }
 
-      .buffer = data,
+  slot->frame = (twai_frame_t){
+      .header = {
+          .id = id,
+          .ide = true,
+          .rtr = false,
+          .dlc = len,
+      },
+      .buffer = slot->buffer,
       .buffer_len = len,
   };
+  if (len > 0) {
+    memcpy(slot->buffer, data, len);
+  }
 
-  return twai_node_transmit(s_node_hdl, &tx_msg, pdMS_TO_TICKS(timeout_ms));
+  esp_err_t ret =
+      twai_node_transmit(s_node_hdl, &slot->frame, pdMS_TO_TICKS(timeout_ms));
+  if (ret != ESP_OK) {
+    can_release_tx_slot(slot);
+  }
+  return ret;
+}
+
+esp_err_t can_wait_for_tx(uint16_t timeout_ms) {
+  if (!s_initialized) {
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  return twai_node_transmit_wait_all_done(s_node_hdl, timeout_ms);
 }
