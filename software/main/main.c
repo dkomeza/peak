@@ -74,6 +74,7 @@ static esc_controller_t peak_controller;
 static uint8_t current_gear = PEAK_MIN_GEAR;
 static esc_ride_mode_t current_ride_mode = ESC_RIDE_MODE_NORMAL;
 static esc_support_mode_t current_support_mode = ESC_SUPPORT_MODE_PAS;
+static bool controller_power_requested;
 static bool walk_command_active;
 static uint32_t next_walk_refresh_ms;
 static uint32_t last_walk_refresh_error_ms;
@@ -135,6 +136,16 @@ static void publish_action_result(display_action_t action, esp_err_t result) {
   if (result == ESP_OK) {
     publish_control_state();
   }
+}
+
+static void request_controller_power(bool enabled) {
+  esp_err_t ret = esc_controller_set_power(&peak_controller, enabled);
+  publish_action_result(DISPLAY_ACTION_POWER, ret);
+  if (ret == ESP_OK) {
+    controller_power_requested = enabled;
+  }
+  log_esc_command_result(enabled ? "CycleIQ power on" : "CycleIQ power off",
+                         ret);
 }
 
 static void publish_boot_stage(peak_boot_stage_t stage) {
@@ -222,17 +233,14 @@ static void handle_button_up_long(void) {
   log_esc_command_result("UP long press: toggle support mode", ret);
 }
 
-static void handle_button_power_long(void) {
-  esc_ride_mode_t next_mode = current_ride_mode == ESC_RIDE_MODE_NORMAL
-                                  ? ESC_RIDE_MODE_MOUNTAIN
-                                  : ESC_RIDE_MODE_NORMAL;
+static void stop_walk_mode(const char *action);
 
-  esp_err_t ret = esc_controller_set_ride_mode(&peak_controller, next_mode);
-  if (ret == ESP_OK) {
-    current_ride_mode = next_mode;
+static void handle_button_power_long(void) {
+  if (controller_power_requested) {
+    stop_walk_mode("POWER long press: stop walk mode");
   }
-  publish_action_result(DISPLAY_ACTION_RIDE_MODE, ret);
-  log_esc_command_result("POWER long press: toggle ride mode", ret);
+
+  request_controller_power(!controller_power_requested);
 }
 
 static void handle_boot_mountain_mode(void) {
@@ -363,9 +371,7 @@ static void start_cycleiq_controller(boot_mode_t mode) {
     ESP_LOGW(TAG, "Configuration boot selected; starting CycleIQ normally");
   }
 
-  esp_err_t ret = esc_controller_set_power(&peak_controller, true);
-  publish_action_result(DISPLAY_ACTION_POWER, ret);
-  log_esc_command_result("CycleIQ power on", ret);
+  request_controller_power(true);
 }
 
 static void nvs_init(void) {
