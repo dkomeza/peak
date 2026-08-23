@@ -183,4 +183,14 @@ esp_err_t display_port_init(void) {
   return lvgl_init(s_panel);
 }
 
+esp_err_t display_port_sleep(void) {
+  ESP_RETURN_ON_FALSE(s_panel != NULL, ESP_ERR_INVALID_STATE, TAG,
+                      "Display panel is not initialized");
+  ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, false), TAG,
+                      "Failed to turn panel off");
+  ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_sleep(s_panel, true), TAG,
+                      "Failed to put panel to sleep");
+  return gpio_set_level(DISPLAY_BACKLIGHT_GPIO, 0);
+}
+
 uint32_t display_port_timer_handler(void) { return lv_timer_handler(); }

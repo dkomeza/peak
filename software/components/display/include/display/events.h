@@ -20,6 +20,7 @@ typedef enum {
   DISPLAY_EVENT_LOCAL_BATTERY,
   DISPLAY_EVENT_AMBIENT,
   DISPLAY_EVENT_FAULT,
+  DISPLAY_EVENT_SLEEP,
 } display_event_type_t;
 
 typedef enum {

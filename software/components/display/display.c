@@ -14,6 +14,7 @@
 #define DISPLAY_CRITICAL_QUEUE_LENGTH 8
 #define DISPLAY_TELEMETRY_QUEUE_LENGTH 16
 #define DISPLAY_INIT_TIMEOUT_MS 5000
+#define DISPLAY_SLEEP_TIMEOUT_MS 200
 #define DISPLAY_MAX_WAIT_MS 20
 
 typedef struct {
@@ -27,8 +28,11 @@ typedef struct {
                               sizeof(display_event_t)];
   StaticSemaphore_t init_done_storage;
   SemaphoreHandle_t init_done;
+  StaticSemaphore_t sleep_done_storage;
+  SemaphoreHandle_t sleep_done;
   TaskHandle_t task;
   esp_err_t init_result;
+  esp_err_t sleep_result;
   bool started;
   bool ready;
 } display_runtime_t;
@@ -44,19 +48,32 @@ static bool is_critical_event(display_event_type_t type) {
   case DISPLAY_EVENT_ESC_CONTROLLER_STATE:
   case DISPLAY_EVENT_ESC_WALK_STATE:
   case DISPLAY_EVENT_FAULT:
+  case DISPLAY_EVENT_SLEEP:
     return true;
   default:
     return false;
   }
 }
 
-static void process_queued_events(QueueHandle_t queue, display_ui_model_t *model) {
+static void process_event(const display_event_t *event,
+                          display_ui_model_t *model) {
+  if (event->type == DISPLAY_EVENT_SLEEP) {
+    s_runtime.sleep_result = display_port_sleep();
+    xSemaphoreGive(s_runtime.sleep_done);
+    return;
+  }
+
+  display_home_apply_event(event);
+  if (display_ui_model_apply(model, event)) {
+    display_home_update(model);
+  }
+}
+
+static void process_queued_events(QueueHandle_t queue,
+                                  display_ui_model_t *model) {
   display_event_t event;
   while (xQueueReceive(queue, &event, 0) == pdTRUE) {
-    display_home_apply_event(&event);
-    if (display_ui_model_apply(model, &event)) {
-      display_home_update(model);
-    }
+    process_event(&event, model);
   }
 }
 
@@ -92,10 +109,7 @@ static void display_ui_task(void *arg) {
     display_event_t event;
     if (xQueueReceive(s_runtime.critical_queue, &event,
                       wait_ticks(delay_ms)) == pdTRUE) {
-      display_home_apply_event(&event);
-      if (display_ui_model_apply(&model, &event)) {
-        display_home_update(&model);
-      }
+      process_event(&event, &model);
     }
   }
 }
@@ -112,8 +126,10 @@ esp_err_t display_start(void) {
       DISPLAY_TELEMETRY_QUEUE_LENGTH, sizeof(display_event_t),
       s_runtime.telemetry_queue_data, &s_runtime.telemetry_queue_storage);
   s_runtime.init_done = xSemaphoreCreateBinaryStatic(&s_runtime.init_done_storage);
+  s_runtime.sleep_done =
+      xSemaphoreCreateBinaryStatic(&s_runtime.sleep_done_storage);
   if (s_runtime.critical_queue == NULL || s_runtime.telemetry_queue == NULL ||
-      s_runtime.init_done == NULL) {
+      s_runtime.init_done == NULL || s_runtime.sleep_done == NULL) {
     return ESP_ERR_NO_MEM;
   }
 
@@ -146,4 +162,20 @@ esp_err_t display_event_publish(const display_event_t *event) {
                             ? s_runtime.critical_queue
                             : s_runtime.telemetry_queue;
   return xQueueSend(queue, event, 0) == pdTRUE ? ESP_OK : ESP_ERR_TIMEOUT;
+}
+
+esp_err_t display_sleep(void) {
+  if (!s_runtime.ready) {
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  display_event_t event = {.type = DISPLAY_EVENT_SLEEP};
+  if (xQueueSend(s_runtime.critical_queue, &event, 0) != pdTRUE) {
+    return ESP_ERR_TIMEOUT;
+  }
+  if (xSemaphoreTake(s_runtime.sleep_done,
+                     pdMS_TO_TICKS(DISPLAY_SLEEP_TIMEOUT_MS)) != pdTRUE) {
+    return ESP_ERR_TIMEOUT;
+  }
+  return s_runtime.sleep_result;
 }

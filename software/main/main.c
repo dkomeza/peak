@@ -17,6 +17,7 @@
 #include "connection/can.h"
 #include "display_event_adapter.h"
 #include "driver/i2c_master.h"
+#include "power.h"
 
 #include "io/battery.h"
 #include "io/ltr329.h"
@@ -38,6 +39,7 @@
 #define PEAK_MAX_GEAR 6
 #define PEAK_WALK_REFRESH_MS 250U
 #define PEAK_WALK_ERROR_LOG_INTERVAL_MS 1000U
+#define PEAK_POWER_OFF_TX_TIMEOUT_MS 100U
 #define PEAK_BOOT_COUNT_MAGIC 0x5045414bU
 #define PEAK_BOOT_DIAGNOSTIC_MS 15000U
 
@@ -75,6 +77,7 @@ static uint8_t current_gear = PEAK_MIN_GEAR;
 static esc_ride_mode_t current_ride_mode = ESC_RIDE_MODE_NORMAL;
 static esc_support_mode_t current_support_mode = ESC_SUPPORT_MODE_PAS;
 static bool controller_power_requested;
+static bool ignore_boot_power_release;
 static bool walk_command_active;
 static uint32_t next_walk_refresh_ms;
 static uint32_t last_walk_refresh_error_ms;
@@ -138,7 +141,7 @@ static void publish_action_result(display_action_t action, esp_err_t result) {
   }
 }
 
-static void request_controller_power(bool enabled) {
+static esp_err_t request_controller_power(bool enabled) {
   esp_err_t ret = esc_controller_set_power(&peak_controller, enabled);
   publish_action_result(DISPLAY_ACTION_POWER, ret);
   if (ret == ESP_OK) {
@@ -146,6 +149,7 @@ static void request_controller_power(bool enabled) {
   }
   log_esc_command_result(enabled ? "CycleIQ power on" : "CycleIQ power off",
                          ret);
+  return ret;
 }
 
 static void publish_boot_stage(peak_boot_stage_t stage) {
@@ -184,7 +188,7 @@ void button_up_long_pressed(void) {
   queue_button_event(PEAK_BUTTON_EVENT_UP_LONG);
 }
 
-void button_power_long_pressed(void) {
+void button_power_long_released(void) {
   queue_button_event(PEAK_BUTTON_EVENT_POWER_LONG);
 }
 
@@ -207,7 +211,14 @@ static void handle_button_up_click(void) {
   log_esc_command_result("UP click: gear up", ret);
 }
 
-static void handle_button_power_click(void) { ESP_LOGI(TAG, "POWER click"); }
+static void handle_button_power_click(void) {
+  if (ignore_boot_power_release) {
+    ignore_boot_power_release = false;
+    return;
+  }
+
+  ESP_LOGI(TAG, "POWER click");
+}
 
 static void handle_button_down_click(void) {
   uint8_t next_gear =
@@ -235,12 +246,42 @@ static void handle_button_up_long(void) {
 
 static void stop_walk_mode(const char *action);
 
-static void handle_button_power_long(void) {
-  if (controller_power_requested) {
-    stop_walk_mode("POWER long press: stop walk mode");
+static void shutdown_controller(void) {
+  stop_walk_mode("POWER long press: stop walk mode");
+
+  esp_err_t ret = request_controller_power(false);
+  if (ret != ESP_OK) {
+    return;
   }
 
-  request_controller_power(!controller_power_requested);
+  ret = can_wait_for_tx(PEAK_POWER_OFF_TX_TIMEOUT_MS);
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "CycleIQ power-off transmit did not complete: %s",
+             esp_err_to_name(ret));
+    return;
+  }
+
+  ret = display_sleep();
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "Display sleep failed: %s", esp_err_to_name(ret));
+  }
+
+  ret = power_enter_deep_sleep();
+  ESP_LOGW(TAG, "Deep sleep was rejected: %s", esp_err_to_name(ret));
+}
+
+static void handle_button_power_long(void) {
+  if (ignore_boot_power_release) {
+    ignore_boot_power_release = false;
+    return;
+  }
+
+  if (controller_power_requested) {
+    shutdown_controller();
+    return;
+  }
+
+  request_controller_power(true);
 }
 
 static void handle_boot_mountain_mode(void) {
@@ -371,7 +412,7 @@ static void start_cycleiq_controller(boot_mode_t mode) {
     ESP_LOGW(TAG, "Configuration boot selected; starting CycleIQ normally");
   }
 
-  request_controller_power(true);
+  (void)request_controller_power(true);
 }
 
 static void nvs_init(void) {
@@ -528,8 +569,11 @@ static void peak_app_task(void *arg) {
   // Button event handlers
   buttons_on(BTN_UP, BTN_EVENT_CLICK, button_up_pressed);
   buttons_on(BTN_UP, BTN_EVENT_LONG_PRESS_START, button_up_long_pressed);
+  ignore_boot_power_release =
+      mode == BOOT_MODE_NORMAL && buttons_is_pressed(BTN_POWER);
   buttons_on(BTN_POWER, BTN_EVENT_CLICK, button_power_pressed);
-  buttons_on(BTN_POWER, BTN_EVENT_LONG_PRESS_START, button_power_long_pressed);
+  buttons_on(BTN_POWER, BTN_EVENT_LONG_PRESS_END,
+             button_power_long_released);
   buttons_on(BTN_DOWN, BTN_EVENT_CLICK, button_down_pressed);
   buttons_on(BTN_DOWN, BTN_EVENT_LONG_PRESS_START, button_down_long_started);
   buttons_on(BTN_DOWN, BTN_EVENT_LONG_PRESS_END, button_down_long_ended);
