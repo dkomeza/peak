@@ -1,3 +1,4 @@
+#include "backlight.h"
 #include "display_port.h"
 #include "st7701_commands.h"
 
@@ -16,7 +17,6 @@
 #define DISPLAY_V_RES 640
 #define DISPLAY_LVGL_DRAW_ROWS 40
 #define DISPLAY_RESET_GPIO GPIO_NUM_40
-#define DISPLAY_BACKLIGHT_GPIO GPIO_NUM_10
 
 static const char *TAG = "display_port";
 static esp_lcd_panel_handle_t s_panel;
@@ -88,13 +88,6 @@ static esp_err_t create_st7701_panel(esp_lcd_dsi_bus_handle_t bus,
   return esp_lcd_new_panel_st7701(io, &config, panel_out);
 }
 
-static esp_err_t enable_backlight(void) {
-  ESP_RETURN_ON_ERROR(
-      gpio_set_direction(DISPLAY_BACKLIGHT_GPIO, GPIO_MODE_OUTPUT), TAG,
-      "Failed to configure backlight GPIO");
-  return gpio_set_level(DISPLAY_BACKLIGHT_GPIO, 1);
-}
-
 static esp_err_t panel_init(esp_lcd_panel_handle_t *panel_out) {
   ESP_RETURN_ON_FALSE(panel_out != NULL, ESP_ERR_INVALID_ARG, TAG,
                       "Panel output handle is required");
@@ -121,7 +114,7 @@ static esp_err_t panel_init(esp_lcd_panel_handle_t *panel_out) {
                       "Failed to reset panel");
   ESP_RETURN_ON_ERROR(esp_lcd_panel_init(*panel_out), TAG,
                       "Failed to initialize panel");
-  return enable_backlight();
+  return backlight_init();
 }
 
 static uint32_t lvgl_tick_get_ms(void) {
@@ -186,11 +179,19 @@ esp_err_t display_port_init(void) {
 esp_err_t display_port_sleep(void) {
   ESP_RETURN_ON_FALSE(s_panel != NULL, ESP_ERR_INVALID_STATE, TAG,
                       "Display panel is not initialized");
+  ESP_RETURN_ON_ERROR(backlight_set_enabled(false), TAG,
+                      "Failed to turn off backlight");
   ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, false), TAG,
                       "Failed to turn panel off");
   ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_sleep(s_panel, true), TAG,
                       "Failed to put panel to sleep");
-  return gpio_set_level(DISPLAY_BACKLIGHT_GPIO, 0);
+  return ESP_OK;
 }
 
-uint32_t display_port_timer_handler(void) { return lv_timer_handler(); }
+uint32_t display_port_timer_handler(void) {
+  esp_err_t ret = backlight_service();
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "Backlight service failed: %s", esp_err_to_name(ret));
+  }
+  return lv_timer_handler();
+}

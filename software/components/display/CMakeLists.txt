@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "display.c"
+        "port/backlight.c"
         "port/display_port.c"
         "port/st7701_commands.c"
         "ui/home.c"
@@ -11,8 +12,11 @@ idf_component_register(
     PRIV_REQUIRES
         esp_lcd
         esp_lcd_st7701
+        esp_driver_gpio
+        esp_driver_ledc
         esp_timer
         freertos
+        io
         lvgl
 )
 

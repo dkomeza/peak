@@ -1,13 +1,14 @@
 #include "display/display.h"
 
-#include "port/display_port.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "ui/home.h"
 #include "lvgl.h"
+#include "port/backlight.h"
+#include "port/display_port.h"
+#include "ui/home.h"
 
 #define DISPLAY_UI_TASK_STACK_SIZE 6144
 #define DISPLAY_UI_TASK_PRIORITY 4
@@ -25,7 +26,7 @@ typedef struct {
   uint8_t critical_queue_data[DISPLAY_CRITICAL_QUEUE_LENGTH *
                               sizeof(display_event_t)];
   uint8_t telemetry_queue_data[DISPLAY_TELEMETRY_QUEUE_LENGTH *
-                              sizeof(display_event_t)];
+                               sizeof(display_event_t)];
   StaticSemaphore_t init_done_storage;
   SemaphoreHandle_t init_done;
   StaticSemaphore_t sleep_done_storage;
@@ -78,9 +79,8 @@ static void process_queued_events(QueueHandle_t queue,
 }
 
 static TickType_t wait_ticks(uint32_t delay_ms) {
-  uint32_t bounded_delay_ms = delay_ms > DISPLAY_MAX_WAIT_MS
-                                  ? DISPLAY_MAX_WAIT_MS
-                                  : delay_ms;
+  uint32_t bounded_delay_ms =
+      delay_ms > DISPLAY_MAX_WAIT_MS ? DISPLAY_MAX_WAIT_MS : delay_ms;
   return pdMS_TO_TICKS(bounded_delay_ms);
 }
 
@@ -107,8 +107,8 @@ static void display_ui_task(void *arg) {
 
     uint32_t delay_ms = display_port_timer_handler();
     display_event_t event;
-    if (xQueueReceive(s_runtime.critical_queue, &event,
-                      wait_ticks(delay_ms)) == pdTRUE) {
+    if (xQueueReceive(s_runtime.critical_queue, &event, wait_ticks(delay_ms)) ==
+        pdTRUE) {
       process_event(&event, &model);
     }
   }
@@ -125,7 +125,8 @@ esp_err_t display_start(void) {
   s_runtime.telemetry_queue = xQueueCreateStatic(
       DISPLAY_TELEMETRY_QUEUE_LENGTH, sizeof(display_event_t),
       s_runtime.telemetry_queue_data, &s_runtime.telemetry_queue_storage);
-  s_runtime.init_done = xSemaphoreCreateBinaryStatic(&s_runtime.init_done_storage);
+  s_runtime.init_done =
+      xSemaphoreCreateBinaryStatic(&s_runtime.init_done_storage);
   s_runtime.sleep_done =
       xSemaphoreCreateBinaryStatic(&s_runtime.sleep_done_storage);
   if (s_runtime.critical_queue == NULL || s_runtime.telemetry_queue == NULL ||
@@ -147,6 +148,9 @@ esp_err_t display_start(void) {
     return ESP_ERR_TIMEOUT;
   }
 
+  backlight_set_percent(100);
+  backlight_set_enabled(true);
+
   return s_runtime.init_result;
 }
 
@@ -165,6 +169,7 @@ esp_err_t display_event_publish(const display_event_t *event) {
 }
 
 esp_err_t display_sleep(void) {
+  backlight_set_enabled(false);
   if (!s_runtime.ready) {
     return ESP_ERR_INVALID_STATE;
   }
