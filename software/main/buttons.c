@@ -82,6 +82,13 @@ bool buttons_is_pressed(button_t btn) {
   return button_is_pressed(buttons[btn]);
 }
 
+void buttons_ignore_until_released(button_t btn) {
+  if (!initialized || btn < 0 || btn >= 3)
+    return;
+
+  button_ignore_until_release(buttons[btn]);
+}
+
 void buttons_pause(button_t btn, btn_event_type_t event_type) {
   if (!initialized || btn < 0 || btn >= 3)
     return;

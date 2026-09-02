@@ -11,11 +11,13 @@ typedef enum BOOT_MODE {
 typedef void (*mountain_mode_callback_t)(void);
 
 /**
- * This function determines the boot mode of the device based on button presses
- * during boot. It will block until the mode was determined.
+ * This function requires POWER to remain pressed for one second. POWER + DOWN
+ * then selects configuration mode.
  *
- * If the user attempts to boot into mountain mode, it will handle it
- * asynchronously, and call the provided callback if mountain mode was selected.
+ * Holding POWER + UP at the end of that interval starts a non-blocking
+ * three-second mountain-mode check. The callback is invoked only if both
+ * buttons remain held for its full duration. The release of the initial POWER
+ * hold is ignored by runtime button handlers.
  */
 boot_mode_t boot(mountain_mode_callback_t callback);
 

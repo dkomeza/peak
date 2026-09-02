@@ -20,6 +20,7 @@ typedef enum {
   BTN_STATE_DEBOUNCE,
   BTN_STATE_PRESS,
   BTN_STATE_LONG_PRESS,
+  BTN_STATE_IGNORE_UNTIL_RELEASE,
 } btn_state_t;
 
 typedef struct {
@@ -45,6 +46,12 @@ button_state_t *button_init(int pin);
  * Check the current state of the button.
  */
 bool button_is_pressed(volatile button_state_t *btn);
+
+/**
+ * Discards the current press, including its eventual release. The button
+ * resumes normal event handling after it is released.
+ */
+void button_ignore_until_release(volatile button_state_t *btn);
 
 /**
  * Attaches a callback function to a specific button event type.

@@ -83,7 +83,16 @@ bool button_is_pressed(volatile button_state_t *btn) {
   if (!btn)
     return false;
 
-  return btn->state == BTN_STATE_PRESS || btn->state == BTN_STATE_LONG_PRESS;
+  return btn->state == BTN_STATE_PRESS || btn->state == BTN_STATE_LONG_PRESS ||
+         btn->state == BTN_STATE_IGNORE_UNTIL_RELEASE;
+}
+
+void button_ignore_until_release(volatile button_state_t *btn) {
+  if (!btn || btn->state == BTN_STATE_IDLE) {
+    return;
+  }
+
+  btn->state = BTN_STATE_IGNORE_UNTIL_RELEASE;
 }
 
 void button_attach_callback(btn_event_type_t event_type, callback_t callback,
@@ -178,6 +187,12 @@ void button_update(volatile button_state_t *btn) {
 
       dispatch_button_event(BTN_EVENT_UP, btn);
       dispatch_button_event(BTN_EVENT_LONG_PRESS_END, btn);
+    }
+    break;
+
+  case BTN_STATE_IGNORE_UNTIL_RELEASE:
+    if (!is_pressed) {
+      btn->state = BTN_STATE_IDLE;
     }
     break;
 
