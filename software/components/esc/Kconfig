@@ -1,0 +1,15 @@
+menu "Peak ESC"
+
+choice PEAK_ESC_BACKEND
+  prompt "ESC backend"
+  default PEAK_ESC_BACKEND_CYCLEIQ
+
+config PEAK_ESC_BACKEND_KT
+  bool "KT (UART)"
+
+config PEAK_ESC_BACKEND_CYCLEIQ
+  bool "CycleIQ (CAN)"
+
+endchoice
+
+endmenu

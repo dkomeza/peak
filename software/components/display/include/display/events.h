@@ -9,14 +9,7 @@ typedef enum {
   DISPLAY_EVENT_BOOT_STAGE,
   DISPLAY_EVENT_ACTION_RESULT,
   DISPLAY_EVENT_CONTROL_STATE,
-  DISPLAY_EVENT_ESC_CONTROLLER_STATE,
-  DISPLAY_EVENT_ESC_WALK_STATE,
-  DISPLAY_EVENT_ESC_BATTERY,
-  DISPLAY_EVENT_ESC_ENERGY,
-  DISPLAY_EVENT_ESC_MOTOR,
-  DISPLAY_EVENT_ESC_LIVE,
-  DISPLAY_EVENT_ESC_TRIP_PRIMARY,
-  DISPLAY_EVENT_ESC_TRIP_SECONDARY,
+  DISPLAY_EVENT_ESC_STATE,
   DISPLAY_EVENT_LOCAL_BATTERY,
   DISPLAY_EVENT_AMBIENT,
   DISPLAY_EVENT_FAULT,
@@ -38,6 +31,19 @@ typedef enum {
   DISPLAY_FAULT_SENSOR,
 } display_fault_source_t;
 
+enum {
+  DISPLAY_ESC_STATE_GEAR = 1U << 0,
+  DISPLAY_ESC_STATE_SUPPORT_MODE = 1U << 1,
+  DISPLAY_ESC_STATE_RIDE_MODE = 1U << 2,
+  DISPLAY_ESC_STATE_WALK = 1U << 3,
+  DISPLAY_ESC_STATE_SPEED = 1U << 4,
+  DISPLAY_ESC_STATE_POWER = 1U << 5,
+  DISPLAY_ESC_STATE_MOTOR_TEMP = 1U << 6,
+  DISPLAY_ESC_STATE_CONTROLLER_TEMP = 1U << 7,
+  DISPLAY_ESC_STATE_BATTERY_PERCENT = 1U << 8,
+  DISPLAY_ESC_STATE_BATTERY_VOLTAGE = 1U << 9,
+};
+
 typedef struct {
   display_event_type_t type;
   uint32_t timestamp_ms;
@@ -56,30 +62,18 @@ typedef struct {
       bool walk_active;
     } control;
     struct {
-      uint8_t percent;
-      float voltage_v;
-      float current_a;
-    } esc_battery;
-    struct {
-      float watt_hours;
-      float amp_hours;
-    } esc_energy;
-    struct {
-      int8_t motor_c;
-      int8_t controller_c;
-      float current_a;
-      uint16_t rpm;
-    } motor;
-    struct {
+      uint32_t valid_fields;
+      uint8_t gear;
+      uint8_t support_mode;
+      uint8_t ride_mode;
+      bool walk_active;
       float speed_kph;
-      uint16_t power_w;
-    } live;
-    struct {
-      float distance_km;
-      float elapsed_s;
-      float average_kph;
-      uint8_t range_km;
-    } trip;
+      int16_t power_w;
+      int8_t motor_temp_c;
+      int8_t controller_temp_c;
+      uint8_t battery_percent;
+      float battery_voltage_v;
+    } esc_state;
     struct {
       float voltage_v;
     } local_battery;

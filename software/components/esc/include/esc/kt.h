@@ -1,73 +1,57 @@
 #ifndef ESC_KT_H
 #define ESC_KT_H
 
-#include "esc/controller.h"
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct {
-  uint8_t val;
-  uint16_t circumference_mm;
-  char *name;
-} wheel_size_t;
-
-static const wheel_size_t WHEEL_SIZES[] = {
-    {30, 2298, "29\""}, {28, 2150, "28\""}, {24, 2124, "700C"},
-    {20, 2073, "26\""}, {16, 1905, "24\""}, {8, 1550, "20\""}};
+#include "esc/esc.h"
 
 typedef struct {
-  uint8_t battery_level;
-  float speed;
-  float rpm;
-  uint16_t power;
-  int8_t motor_temp;
-
-  bool throttle;
-  bool cruise;
-  bool assist;
-  bool brake;
-} esc_kt_data_t;
-
-typedef struct {
-  uint8_t assist_level;
-  esc_ride_mode_t ride_mode;
+  uint8_t wheel_code;
+  uint16_t wheel_circumference_mm;
+  uint8_t max_speed_kph;
   bool light;
+  uint8_t p1;
+  uint8_t p2;
+  uint8_t p3;
+  uint8_t p4;
+  uint8_t p5;
+  uint8_t c1;
+  uint8_t c2;
+  uint8_t c4;
+  uint8_t c5;
+  uint8_t c12;
+  uint8_t c13;
+  uint8_t c14;
+} esc_kt_settings_t;
 
-  // Basic settings
-  uint8_t max_speed;
-  wheel_size_t wheel_size;
+typedef struct {
+  uint8_t battery_percent;
+  float speed_kph;
+  float wheel_rpm;
+  uint16_t power_w;
+  int8_t motor_temp_c;
+  bool throttle_active;
+  bool cruise_active;
+  bool assist_active;
+  bool brake_active;
+  uint8_t gear;
+  esc_ride_mode_t ride_mode;
+  bool walk_active;
+  bool has_telemetry;
+} esc_kt_snapshot_t;
 
-  // P params
-  uint8_t P1;
-  uint8_t P2;
-  uint8_t P3;
-  uint8_t P4;
-  uint8_t P5;
+typedef void (*esc_kt_update_cb_t)(const esc_kt_snapshot_t *snapshot,
+                                   void *context);
 
-  // C params
-  uint8_t C1;
-  uint8_t C2;
-  uint8_t C4;
-  uint8_t C5;
-  uint8_t C12;
-  uint8_t C13;
-  uint8_t C14;
-} peak_kt_data_t;
-
-/**
- * Initializes the ESC KT module.
- * Starts both the the receive and send tasks */
-void esc_kt_init(void);
-
-/**
- * Initializes a caller-owned KT controller command handle.
- */
-esp_err_t esc_kt_controller_init(esc_controller_t *out);
-
-/**
- * Gets the latest data received from the ESC.
- * This is thread safe and blocking.
- */
-void esc_kt_get_data(esc_kt_data_t *data);
+esp_err_t esc_kt_set_update_callback(esc_kt_update_cb_t callback,
+                                      void *context);
+esp_err_t esc_kt_init(void);
+esp_err_t esc_kt_set_settings(const esc_kt_settings_t *settings);
+esp_err_t esc_kt_gear_up(void);
+esp_err_t esc_kt_gear_down(void);
+esp_err_t esc_kt_set_ride_mode(esc_ride_mode_t mode);
+esp_err_t esc_kt_set_walk(bool enabled);
+esp_err_t esc_kt_get_snapshot(esc_kt_snapshot_t *out);
 
 #endif

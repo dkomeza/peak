@@ -12,10 +12,13 @@
 #include <esp_timer.h>
 #include <inttypes.h>
 #include <nvs_flash.h>
+#include <stdbool.h>
 
 #include "boot/boot.h"
 #include "buttons.h"
+#include "display_event_adapter.h"
 #include "driver/i2c_master.h"
+#include "esc/esc.h"
 #include "power.h"
 
 #include "display/display.h"
@@ -28,6 +31,8 @@
 
 static const char *TAG = "peak_app";
 static i2c_master_bus_handle_t bus_handle;
+static volatile bool s_esc_ready;
+static volatile bool s_mountain_requested;
 
 void i2c_master_init() {
   i2c_master_bus_config_t bus_config = {.sda_io_num = 31,
@@ -49,8 +54,30 @@ static void handle_button_power_long_stop(void) {
   power_enter_deep_sleep();
 }
 
+static void handle_gear_up(void) {
+  esp_err_t ret = esc_gear_up();
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "failed to increase gear: %s", esp_err_to_name(ret));
+  }
+}
+
+static void handle_gear_down(void) {
+  esp_err_t ret = esc_gear_down();
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "failed to decrease gear: %s", esp_err_to_name(ret));
+  }
+}
+
 static void handle_boot_mountain_mode(void) {
-  printf("Booting into Mountain mode...\n");
+  s_mountain_requested = true;
+  if (!s_esc_ready) {
+    return;
+  }
+
+  esp_err_t ret = esc_set_ride_mode(ESC_RIDE_MODE_MOUNTAIN);
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "failed to enable Mountain mode: %s", esp_err_to_name(ret));
+  }
 }
 
 static void nvs_init(void) {
@@ -70,6 +97,17 @@ static void peak_app_task(void *arg) {
 
   boot(handle_boot_mountain_mode);
   ESP_ERROR_CHECK(display_start());
+  ESP_ERROR_CHECK(display_event_adapter_start());
+
+  esp_err_t esc_ret = esc_init();
+  if (esc_ret != ESP_OK) {
+    ESP_LOGE(TAG, "ESC initialization failed: %s", esp_err_to_name(esc_ret));
+  } else {
+    s_esc_ready = true;
+    if (s_mountain_requested) {
+      handle_boot_mountain_mode();
+    }
+  }
 
   i2c_master_init();
   ltr329_sensor_init(&bus_handle);
@@ -80,6 +118,8 @@ static void peak_app_task(void *arg) {
   buttons_on(BTN_POWER, BTN_EVENT_LONG_PRESS_START, handle_button_power_long);
   buttons_on(BTN_POWER, BTN_EVENT_LONG_PRESS_END,
              handle_button_power_long_stop);
+  buttons_on(BTN_UP, BTN_EVENT_CLICK, handle_gear_up);
+  buttons_on(BTN_DOWN, BTN_EVENT_CLICK, handle_gear_down);
 
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(1000));

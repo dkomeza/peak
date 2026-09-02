@@ -46,8 +46,7 @@ static bool is_critical_event(display_event_type_t type) {
   case DISPLAY_EVENT_BOOT_STAGE:
   case DISPLAY_EVENT_ACTION_RESULT:
   case DISPLAY_EVENT_CONTROL_STATE:
-  case DISPLAY_EVENT_ESC_CONTROLLER_STATE:
-  case DISPLAY_EVENT_ESC_WALK_STATE:
+  case DISPLAY_EVENT_ESC_STATE:
   case DISPLAY_EVENT_FAULT:
   case DISPLAY_EVENT_SLEEP:
     return true;

@@ -15,7 +15,7 @@ typedef struct {
 static home_view_t s_view;
 
 static const char *support_mode_name(uint8_t mode) {
-  static const char *const names[] = {"PAS", "TORQUE", "HYBRID"};
+  static const char *const names[] = {"PAS", "TORQUE"};
   return mode < sizeof(names) / sizeof(names[0]) ? names[mode] : "UNKNOWN";
 }
 
@@ -89,20 +89,41 @@ void display_home_update(const display_ui_model_t *model) {
     return;
   }
 
-  if (model->has_live_data) {
+  if (model->has_speed) {
     lv_label_set_text_fmt(s_view.speed, "%.1f km/h", (double)model->speed_kph);
-    lv_label_set_text_fmt(s_view.power.value, "%u", model->power_w);
   }
-  if (model->has_battery_data) {
+  if (model->has_power) {
+    lv_label_set_text_fmt(s_view.power.value, "%d", model->power_w);
+  }
+  if (model->has_battery_percent) {
     lv_label_set_text_fmt(s_view.battery.value, "%u", model->battery_percent);
+  }
+  if (model->has_battery_voltage) {
     lv_label_set_text_fmt(s_view.battery.detail, "%.1f V",
                           (double)model->battery_voltage_v);
   }
-  if (model->has_control_data) {
+  if (model->has_gear) {
     lv_label_set_text_fmt(s_view.gear.value, "%u", model->gear);
     lv_label_set_text(s_view.gear.detail,
                       model->walk_active ? "walk active" : "gear");
-    lv_label_set_text(s_view.mode.value, support_mode_name(model->support_mode));
-    lv_label_set_text(s_view.mode.detail, ride_mode_name(model->ride_mode));
+  }
+  if (model->has_ride_mode) {
+    if (model->has_support_mode) {
+      lv_label_set_text(s_view.mode.value,
+                        support_mode_name(model->support_mode));
+      lv_label_set_text(s_view.mode.detail, ride_mode_name(model->ride_mode));
+    } else {
+      lv_label_set_text(s_view.mode.value, ride_mode_name(model->ride_mode));
+      lv_label_set_text(s_view.mode.detail, "ride mode");
+    }
+  }
+  if (model->has_motor_temp && model->has_controller_temp) {
+    lv_label_set_text_fmt(s_view.status, "Motor %d C  Controller %d C",
+                          model->motor_temp_c, model->controller_temp_c);
+  } else if (model->has_motor_temp) {
+    lv_label_set_text_fmt(s_view.status, "Motor %d C", model->motor_temp_c);
+  } else if (model->has_controller_temp) {
+    lv_label_set_text_fmt(s_view.status, "Controller %d C",
+                          model->controller_temp_c);
   }
 }
