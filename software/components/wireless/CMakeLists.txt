@@ -1,8 +1,5 @@
 idf_component_register(
   SRCS
-    "ble.c"
-    "ble_bridge.c"
-    "ble_ota.c"
     "udp_bridge.c"
     "wifi.c"
   INCLUDE_DIRS
@@ -10,7 +7,6 @@ idf_component_register(
   PRIV_INCLUDE_DIRS
     "include/wireless"
   REQUIRES
-    peak_ota
     vesc
 
   PRIV_REQUIRES
@@ -18,7 +14,4 @@ idf_component_register(
     esp_netif
     esp_event
     lwip
-    bt
-    espressif__esp_hosted
-    nvs_flash
 ) 

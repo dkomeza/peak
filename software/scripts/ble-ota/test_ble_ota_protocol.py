@@ -9,6 +9,7 @@ from ble_ota_protocol import (
     COMMAND_BEGIN,
     COMMAND_FINISH,
     COMMAND_QUERY,
+    OtaError,
     OtaState,
     decode_status,
     encode_begin,
@@ -46,7 +47,7 @@ class ProtocolEncodingTests(unittest.TestCase):
             0x05,
             1234,
             4096,
-            -7,
+            OtaError.DIGEST_MISMATCH,
         )
         status = decode_status(packet)
 
@@ -57,7 +58,8 @@ class ProtocolEncodingTests(unittest.TestCase):
         self.assertEqual(status.flags, 0x05)
         self.assertEqual(status.written, 1234)
         self.assertEqual(status.total, 4096)
-        self.assertEqual(status.error, -7)
+        self.assertEqual(status.error, OtaError.DIGEST_MISMATCH)
+        self.assertEqual(status.error_name, "DIGEST_MISMATCH")
 
     def test_status_requires_exact_length(self):
         for packet in (b"", bytes(15), bytes(17)):

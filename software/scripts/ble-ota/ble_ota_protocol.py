@@ -37,6 +37,19 @@ class OtaState(enum.IntEnum):
     ABORTED = 7
 
 
+class OtaError(enum.IntEnum):
+    NONE = 0
+    NOT_AUTHORIZED = 1
+    INVALID_STATE = 2
+    INVALID_ARGUMENT = 3
+    INVALID_SIZE = 4
+    DIGEST_MISMATCH = 5
+    NO_UPDATE_PARTITION = 6
+    RESOURCE_EXHAUSTED = 7
+    TIMEOUT = 8
+    INTERNAL = 127
+
+
 @dataclass(frozen=True)
 class FirmwareInfo:
     path: Path
@@ -64,6 +77,13 @@ class OtaStatus:
             return OtaState(self.state).name
         except ValueError:
             return f"UNKNOWN({self.state})"
+
+    @property
+    def error_name(self) -> str:
+        try:
+            return OtaError(self.error).name
+        except ValueError:
+            return f"UNKNOWN({self.error})"
 
 
 def inspect_firmware(path: str | Path) -> FirmwareInfo:

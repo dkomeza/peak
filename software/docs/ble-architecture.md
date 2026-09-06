@@ -99,7 +99,7 @@ Status is exactly 16 bytes:
 | 0 | 1 | protocol | `0x01` |
 | 1 | 1 | state | State value below |
 | 2 | 1 | last command | Last accepted/processed command byte |
-| 3 | 1 | flags | Bit field; all bits reserved in v1 |
+| 3 | 1 | flags | Bit 0: Status subscribed; bit 1: NUS TX subscribed |
 | 4 | 4 | written | Bytes committed/accepted, unsigned little-endian |
 | 8 | 4 | total | Declared image size, unsigned little-endian |
 | 12 | 4 | error | Stable signed little-endian OTA error code; zero on success |
@@ -116,8 +116,23 @@ Status is exactly 16 bytes:
 | `ABORTED` | 7 | Session explicitly aborted or disconnected |
 
 Clients must tolerate repeated status packets and unknown flag bits. A protocol
-version mismatch is fatal. Error-number meanings should be defined in one shared
-protocol header and remain stable once released.
+version mismatch is fatal.
+
+| Error | Value | Meaning |
+| --- | ---: | --- |
+| `NONE` | 0 | No error |
+| `NOT_AUTHORIZED` | 1 | This boot did not enter the maintenance window |
+| `INVALID_STATE` | 2 | Operation is not valid in the current OTA state |
+| `INVALID_ARGUMENT` | 3 | A command field or data offset is invalid |
+| `INVALID_SIZE` | 4 | Image size, data length, or final byte count is invalid |
+| `DIGEST_MISMATCH` | 5 | Received image does not match the declared SHA-256 |
+| `NO_UPDATE_PARTITION` | 6 | No inactive OTA partition is available |
+| `RESOURCE_EXHAUSTED` | 7 | A bounded queue or memory resource is unavailable |
+| `TIMEOUT` | 8 | A bounded device-side operation timed out |
+| `INTERNAL` | 127 | Unclassified flash, image-validation, or platform failure |
+
+These values are part of the v1 wire contract. Raw ESP-IDF `esp_err_t` values are
+logged on the device but are never exposed to clients.
 
 ## Transfer state machine
 
@@ -132,9 +147,11 @@ protocol header and remain stable once released.
 7. The device reports `SUCCESS`, allows the result to reach the client, and reboots
    after a bounded delay.
 
-Malformed input, a wrong offset, queue overflow, flash error, digest mismatch,
-invalid image, explicit abort, or disconnect calls the OTA abort path and does not
-select the target partition. A timed-out client can send `QUERY` and read Status.
+Malformed input, a wrong offset, flash error, digest mismatch, invalid image,
+explicit abort, or disconnect calls the OTA abort path and does not select the
+target partition. Queue saturation rejects that GATT write without accepting its
+offset, so a client may retry it. A timed-out client can send `QUERY` and read
+Status.
 
 ## Host uploader
 

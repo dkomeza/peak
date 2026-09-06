@@ -1,0 +1,17 @@
+idf_component_register(
+  SRCS
+    "peak_ble.c"
+    "peak_ble_gatt.c"
+  INCLUDE_DIRS
+    "include"
+  PRIV_INCLUDE_DIRS
+    "."
+  REQUIRES
+    vesc
+  PRIV_REQUIRES
+    bt
+    esp_hw_support
+    esp_system
+    espressif__esp_hosted
+    peak_ota
+)

@@ -43,7 +43,9 @@ Do not silently ignore errors unless the failure is explicitly non-critical and 
 Important areas:
 - `main/`: app entrypoint, boot/display/button orchestration, and top-level firmware behavior.
 - `components/loom/`: immediate-mode graphics/rendering component for the display.
-- `components/wireless/`: Wi-Fi, BLE, UDP bridge, BLE bridge, and BLE-triggered OTA.
+- `components/wireless/`: Wi-Fi and UDP bridge.
+- `components/peak_ble/`: ESP-Hosted/NimBLE lifecycle, VESC Tool NUS bridge,
+  direct BLE OTA protocol, and BLE transport ownership.
 - `components/vesc/`: VESC packet handling and bridge logic.
 - `components/esc/`: ESC controller abstraction and implementations.
 - `components/connection/`: CAN communication.

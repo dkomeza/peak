@@ -161,6 +161,11 @@ class BleOtaProgram:
                 raise RuntimeError(
                     f"device reported unsupported OTA protocol {status.protocol}"
                 )
+            if status.error != 0:
+                raise DeviceRejectedUpdate(
+                    f"device rejected OTA operation: {status.error_name} "
+                    f"({status.error})"
+                )
             if status.state in wanted:
                 return status
             if status.state in (OtaState.FAILED, OtaState.ABORTED):
@@ -171,6 +176,15 @@ class BleOtaProgram:
         status = await self._query_status(client)
         if status is not None:
             self._show_device_status(status)
+            if status.protocol != PROTOCOL_VERSION:
+                raise RuntimeError(
+                    f"device reported unsupported OTA protocol {status.protocol}"
+                )
+            if status.error != 0:
+                raise DeviceRejectedUpdate(
+                    f"device rejected OTA operation: {status.error_name} "
+                    f"({status.error})"
+                )
             if status.state in wanted:
                 return status
             detail = f"; last state was {status.state_name}, error {status.error}"
@@ -255,6 +269,11 @@ class BleOtaProgram:
                 raise RuntimeError(
                     f"device reported unsupported OTA protocol {status.protocol}"
                 )
+            if status.error != 0:
+                raise DeviceRejectedUpdate(
+                    f"device rejected OTA operation: {status.error_name} "
+                    f"({status.error})"
+                )
             if status.state in (OtaState.FAILED, OtaState.ABORTED):
                 raise DeviceRejectedUpdate(
                     f"device entered {status.state_name}; OTA error {status.error}"
@@ -272,7 +291,8 @@ class BleOtaProgram:
         if changed and not progress_line:
             print(
                 f"Device: {status.state_name} "
-                f"({status.written}/{status.total} bytes, error={status.error})"
+                f"({status.written}/{status.total} bytes, "
+                f"error={status.error_name})"
             )
 
     @staticmethod
