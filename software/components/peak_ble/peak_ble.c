@@ -35,6 +35,8 @@ static const char *TAG = "peak_ble";
 #define PEAK_BLE_NOTIFY_RETRIES 4
 #define PEAK_BLE_NOTIFY_WAIT_MS 100
 #define PEAK_BLE_SUCCESS_REBOOT_DELAY_MS 1500
+#define PEAK_BLE_DEVICE_NAME_LEN 9
+#define PEAK_BLE_DEVICE_NAME_BUFFER_LEN (PEAK_BLE_DEVICE_NAME_LEN + 1)
 
 #define PEAK_BLE_TASK_WORKER_STOPPED BIT0
 #define PEAK_BLE_TASK_TX_STOPPED BIT1
@@ -101,11 +103,14 @@ static StackType_t s_tx_task_stack[PEAK_BLE_TX_STACK_SIZE];
 static TaskHandle_t s_tx_task;
 
 static bool s_hosted_bt_enabled;
+static bool s_hosted_bt_initialized;
+static bool s_hosted_initialized;
 static bool s_nimble_initialized;
 static uint8_t s_own_addr_type;
-static char s_device_name[10];
+static char s_device_name[PEAK_BLE_DEVICE_NAME_BUFFER_LEN];
 
 static void peak_ble_advertise(void);
+static void hosted_bt_stop(void);
 
 static void write_le32(uint8_t *bytes, uint32_t value) {
   bytes[0] = (uint8_t)value;
@@ -748,60 +753,94 @@ static void host_task(void *arg) {
   nimble_port_freertos_deinit();
 }
 
+static void initialize_device_name_from_mac(const uint8_t mac[6]) {
+  snprintf(s_device_name, sizeof(s_device_name), "PEAK-%02X%02X", mac[4],
+           mac[5]);
+}
+
+static void initialize_device_name_fallback(void) {
+  uint8_t mac[6];
+  esp_err_t err = esp_read_mac(mac, ESP_MAC_BASE);
+  if (err == ESP_OK) {
+    initialize_device_name_from_mac(mac);
+    return;
+  }
+
+  ESP_LOGW(TAG, "Could not read P4 base MAC for device name: %s",
+           esp_err_to_name(err));
+  snprintf(s_device_name, sizeof(s_device_name), "PEAK-0000");
+}
+
 static esp_err_t hosted_bt_start(void) {
   esp_err_t err = esp_hosted_init();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "ESP-Hosted init failed: %s", esp_err_to_name(err));
     return err;
   }
+  s_hosted_initialized = true;
+
   err = esp_hosted_connect_to_slave();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "ESP-Hosted connection failed: %s", esp_err_to_name(err));
-    return err;
+    goto fail;
   }
+
+  uint8_t bt_mac[6];
+  err = esp_hosted_iface_mac_addr_get(bt_mac, sizeof(bt_mac), ESP_MAC_BT);
+  if (err == ESP_OK) {
+    initialize_device_name_from_mac(bt_mac);
+  } else {
+    ESP_LOGW(TAG, "Could not read hosted BT MAC for device name: %s",
+             esp_err_to_name(err));
+    initialize_device_name_fallback();
+  }
+
   err = esp_hosted_bt_controller_init();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Hosted BT controller init failed: %s", esp_err_to_name(err));
-    return err;
+    goto fail;
   }
+  s_hosted_bt_initialized = true;
+
   err = esp_hosted_bt_controller_enable();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Hosted BT controller enable failed: %s",
              esp_err_to_name(err));
-    (void)esp_hosted_bt_controller_deinit(false);
-    return err;
+    goto fail;
   }
   s_hosted_bt_enabled = true;
   return ESP_OK;
+
+fail:
+  hosted_bt_stop();
+  return err;
 }
 
 static void hosted_bt_stop(void) {
-  if (!s_hosted_bt_enabled) {
-    return;
+  if (s_hosted_bt_enabled) {
+    esp_err_t err = esp_hosted_bt_controller_disable();
+    if (err != ESP_OK) {
+      ESP_LOGW(TAG, "Hosted BT controller disable failed: %s",
+               esp_err_to_name(err));
+    }
+    s_hosted_bt_enabled = false;
   }
-  esp_err_t err = esp_hosted_bt_controller_disable();
-  if (err != ESP_OK) {
-    ESP_LOGW(TAG, "Hosted BT controller disable failed: %s",
-             esp_err_to_name(err));
-  }
-  err = esp_hosted_bt_controller_deinit(false);
-  if (err != ESP_OK) {
-    ESP_LOGW(TAG, "Hosted BT controller deinit failed: %s",
-             esp_err_to_name(err));
-  }
-  s_hosted_bt_enabled = false;
-}
 
-static void initialize_device_name(void) {
-  uint8_t mac[6];
-  esp_err_t err = esp_read_mac(mac, ESP_MAC_WIFI_STA);
-  if (err == ESP_OK) {
-    snprintf(s_device_name, sizeof(s_device_name), "PEAK-%02X%02X", mac[4],
-             mac[5]);
-  } else {
-    ESP_LOGW(TAG, "Could not read MAC for device name: %s",
-             esp_err_to_name(err));
-    snprintf(s_device_name, sizeof(s_device_name), "PEAK-0000");
+  if (s_hosted_bt_initialized) {
+    esp_err_t err = esp_hosted_bt_controller_deinit(false);
+    if (err != ESP_OK) {
+      ESP_LOGW(TAG, "Hosted BT controller deinit failed: %s",
+               esp_err_to_name(err));
+    }
+    s_hosted_bt_initialized = false;
+  }
+
+  if (s_hosted_initialized) {
+    int rc = esp_hosted_deinit();
+    if (rc != ESP_OK) {
+      ESP_LOGW(TAG, "ESP-Hosted deinit failed: %s", esp_err_to_name(rc));
+    }
+    s_hosted_initialized = false;
   }
 }
 
@@ -949,8 +988,6 @@ esp_err_t peak_ble_start(const peak_ble_config_t *config) {
   if (err != ESP_OK) {
     return err;
   }
-  initialize_device_name();
-
   err = hosted_bt_start();
   if (err != ESP_OK) {
     stop_tasks();
@@ -1005,7 +1042,8 @@ esp_err_t peak_ble_stop(void) {
   s_state.ota_status_subscribed = false;
   taskEXIT_CRITICAL(&s_state_lock);
 
-  if (!was_running && !s_nimble_initialized && !s_hosted_bt_enabled) {
+  if (!was_running && !s_nimble_initialized && !s_hosted_bt_enabled &&
+      !s_hosted_bt_initialized && !s_hosted_initialized) {
     return ESP_OK;
   }
 

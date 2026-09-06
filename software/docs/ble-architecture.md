@@ -35,9 +35,11 @@ no dependency on BLE, HTTP, JSON, or Wi-Fi.
   never used as an on-air format.
 - The existing firmware remains selected until the complete new image is verified.
 
-NUS and OTA may be advertised together. The NUS UUID should remain in the primary
+NUS and OTA may be advertised together. The NUS UUID remains in the primary
 advertisement for VESC Tool discovery; the OTA UUID and complete unique device name
-(for example, `PEAK-A1B2`) may use the scan response.
+(for example, `PEAK-A1B2`) use the scan response. The same name is exposed through
+the mandatory GAP Device Name characteristic. Its suffix is derived from the hosted
+C6 controller's Bluetooth MAC address, not the P4's unrelated base MAC.
 
 ## PEAK OTA v1 GATT service
 
@@ -189,8 +191,12 @@ both the image and `BEGIN` packet. Before production release:
   BLE/NUS remains available in normal mode, while OTA `BEGIN` is rejected.
 - Reject OTA while the vehicle is moving, input power is unsuitable, or another
   update/session owns the flash writer.
-- Consider bonded/encrypted BLE as defense in depth, but do not use it as a
-  substitute for signed firmware.
+- The current release deliberately has no BLE pairing, bonding, encryption, or
+  privacy address rotation: all GATT access is unauthenticated, and the OTA
+  maintenance gate is not an authentication boundary. Do not enable individual
+  SMP menuconfig options until a complete pairing, key-storage, and GATT
+  authorization design is implemented and tested. Consider bonded/encrypted BLE
+  as defense in depth, but do not use it as a substitute for signed firmware.
 - Plan Secure Boot, flash encryption, and anti-rollback eFuse provisioning as a
   separate manufacturing/security rollout.
 
