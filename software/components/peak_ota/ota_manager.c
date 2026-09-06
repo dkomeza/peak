@@ -1,189 +1,120 @@
 #include "peak_ota/ota_manager.h"
 
-#include "esp_crt_bundle.h"
-#include "esp_err.h"
-#include "esp_https_ota.h"
 #include "esp_log.h"
-#include "esp_system.h"
-#include "esp_timer.h"
+#include "esp_ota_ops.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#include "freertos/task.h"
+#include "psa/crypto.h"
+
 #include <inttypes.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
 
 static const char *TAG = "peak_ota";
 
-#define PEAK_OTA_TASK_STACK_SIZE 16384
-#define PEAK_OTA_TASK_PRIORITY 4
-#define PEAK_OTA_HTTP_TIMEOUT_MS 10000
-#define PEAK_OTA_RESTART_DELAY_MS 1500
+typedef struct {
+  peak_ota_status_cb_t callback;
+  void *user_data;
+  peak_ota_status_t status;
+} status_notification_t;
 
+static StaticSemaphore_t s_mutex_storage;
 static SemaphoreHandle_t s_mutex;
-static TaskHandle_t s_task_handle;
 static peak_ota_status_t s_status = {
     .state = PEAK_OTA_STATE_IDLE,
-    .percent = -1,
+    .last_error = ESP_OK,
 };
 static peak_ota_status_cb_t s_status_cb;
 static void *s_status_user_data;
 
-static bool url_is_supported(const char *url) {
-  return url != NULL &&
-         (strncmp(url, "http://", 7) == 0 || strncmp(url, "https://", 8) == 0);
+static const esp_partition_t *s_partition;
+static esp_ota_handle_t s_ota_handle;
+static bool s_ota_active;
+static psa_hash_operation_t s_hash_operation = PSA_HASH_OPERATION_INIT;
+static bool s_hash_active;
+static uint8_t s_expected_sha256[PEAK_OTA_SHA256_LEN];
+static uint32_t s_session_id;
+static uint32_t s_last_notified_bytes;
+
+static status_notification_t make_notification_locked(void) {
+  return (status_notification_t){
+      .callback = s_status_cb,
+      .user_data = s_status_user_data,
+      .status = s_status,
+  };
 }
 
-static void copy_text(char *dst, size_t dst_len, const char *src) {
-  if (dst_len == 0) {
+static void publish_notification(const status_notification_t *notification) {
+  ESP_LOGI(TAG, "state=%s bytes=%" PRIu32 "/%" PRIu32 " error=%s",
+           peak_ota_state_to_string(notification->status.state),
+           notification->status.bytes_written,
+           notification->status.total_size,
+           esp_err_to_name(notification->status.last_error));
+
+  if (notification->callback != NULL) {
+    notification->callback(&notification->status, notification->user_data);
+  }
+}
+
+static void reset_session_locked(void) {
+  s_partition = NULL;
+  s_ota_handle = 0;
+  s_ota_active = false;
+  memset(s_expected_sha256, 0, sizeof(s_expected_sha256));
+
+  if (s_hash_active) {
+    psa_hash_abort(&s_hash_operation);
+  }
+  s_hash_operation = (psa_hash_operation_t)PSA_HASH_OPERATION_INIT;
+  s_hash_active = false;
+}
+
+static void abort_ota_handle_locked(void) {
+  if (!s_ota_active) {
     return;
   }
 
-  snprintf(dst, dst_len, "%s", src != NULL ? src : "");
-}
-
-static void publish_status(void) {
-  peak_ota_status_t snapshot;
-
-  xSemaphoreTake(s_mutex, portMAX_DELAY);
-  snapshot = s_status;
-  xSemaphoreGive(s_mutex);
-
-  ESP_LOGI(TAG,
-           "state=%s percent=%d bytes=%d total=%d speed=%" PRIu32
-           " error=%s message=%s",
-           peak_ota_state_to_string(snapshot.state), snapshot.percent,
-           snapshot.bytes_read, snapshot.image_size, snapshot.speed_bps,
-           esp_err_to_name(snapshot.last_error), snapshot.message);
-
-  if (s_status_cb != NULL) {
-    s_status_cb(&snapshot, s_status_user_data);
+  esp_err_t abort_err = esp_ota_abort(s_ota_handle);
+  if (abort_err != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to abort OTA handle: %s",
+             esp_err_to_name(abort_err));
   }
+  s_ota_active = false;
+  s_ota_handle = 0;
 }
 
-static void update_status(peak_ota_state_t state, int bytes_read,
-                          int image_size, uint32_t speed_bps,
-                          esp_err_t last_error, const char *message) {
-  xSemaphoreTake(s_mutex, portMAX_DELAY);
+static status_notification_t fail_session_locked(esp_err_t error) {
+  abort_ota_handle_locked();
 
-  s_status.state = state;
-  s_status.bytes_read = bytes_read;
-  s_status.image_size = image_size;
-  s_status.speed_bps = speed_bps;
-  s_status.last_error = last_error;
-  s_status.percent =
-      (image_size > 0 && bytes_read >= 0) ? (bytes_read * 100) / image_size : -1;
-  copy_text(s_status.message, sizeof(s_status.message), message);
-
-  xSemaphoreGive(s_mutex);
-  publish_status();
-}
-
-static void ota_task(void *arg) {
-  (void)arg;
-
-  char url[PEAK_OTA_URL_MAX_LEN];
-  xSemaphoreTake(s_mutex, portMAX_DELAY);
-  copy_text(url, sizeof(url), s_status.url);
-  xSemaphoreGive(s_mutex);
-
-  update_status(PEAK_OTA_STATE_STARTING, 0, -1, 0, ESP_OK, "starting");
-
-  esp_http_client_config_t http_config = {
-      .url = url,
-      .timeout_ms = PEAK_OTA_HTTP_TIMEOUT_MS,
-      .keep_alive_enable = true,
-      .crt_bundle_attach = esp_crt_bundle_attach,
-  };
-  esp_https_ota_config_t ota_config = {
-      .http_config = &http_config,
-  };
-
-  esp_https_ota_handle_t ota_handle = NULL;
-  esp_err_t err = esp_https_ota_begin(&ota_config, &ota_handle);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "OTA begin failed: %s", esp_err_to_name(err));
-    update_status(PEAK_OTA_STATE_FAILED, 0, -1, 0, err, "begin failed");
-    goto done;
-  }
-
-  int image_size = esp_https_ota_get_image_size(ota_handle);
-  int64_t start_us = esp_timer_get_time();
-  int64_t last_publish_us = 0;
-  int last_percent = -2;
-
-  update_status(PEAK_OTA_STATE_DOWNLOADING, 0, image_size, 0, ESP_OK,
-                "downloading");
-
-  while (true) {
-    err = esp_https_ota_perform(ota_handle);
-
-    int bytes_read = esp_https_ota_get_image_len_read(ota_handle);
-    image_size = esp_https_ota_get_image_size(ota_handle);
-    int percent =
-        (image_size > 0 && bytes_read >= 0) ? (bytes_read * 100) / image_size
-                                            : -1;
-    int64_t now_us = esp_timer_get_time();
-    int64_t elapsed_us = now_us - start_us;
-    uint32_t speed_bps =
-        (elapsed_us > 0 && bytes_read > 0)
-            ? (uint32_t)(((int64_t)bytes_read * 1000000) / elapsed_us)
-            : 0;
-
-    if (percent != last_percent || now_us - last_publish_us > 1000000) {
-      update_status(PEAK_OTA_STATE_DOWNLOADING, bytes_read, image_size,
-                    speed_bps, ESP_OK, "downloading");
-      last_publish_us = now_us;
-      last_percent = percent;
-    }
-
-    if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
-      break;
+  if (s_hash_active) {
+    psa_status_t hash_status = psa_hash_abort(&s_hash_operation);
+    if (hash_status != PSA_SUCCESS) {
+      ESP_LOGW(TAG, "Failed to abort SHA-256 operation: %d",
+               (int)hash_status);
     }
   }
+  s_hash_operation = (psa_hash_operation_t)PSA_HASH_OPERATION_INIT;
+  s_hash_active = false;
+  s_partition = NULL;
+  s_status.state = PEAK_OTA_STATE_FAILED;
+  s_status.last_error = error;
+  return make_notification_locked();
+}
 
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "OTA perform failed: %s", esp_err_to_name(err));
-    int bytes_read = esp_https_ota_get_image_len_read(ota_handle);
-    esp_https_ota_abort(ota_handle);
-    update_status(PEAK_OTA_STATE_FAILED, bytes_read, image_size, 0, err,
-                  "download failed");
-    goto done;
-  }
-
-  if (!esp_https_ota_is_complete_data_received(ota_handle)) {
-    int bytes_read = esp_https_ota_get_image_len_read(ota_handle);
-    esp_https_ota_abort(ota_handle);
-    update_status(PEAK_OTA_STATE_FAILED, bytes_read, image_size, 0,
-                  ESP_ERR_INVALID_SIZE, "incomplete image");
-    goto done;
-  }
-
-  int bytes_read = esp_https_ota_get_image_len_read(ota_handle);
-  err = esp_https_ota_finish(ota_handle);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "OTA finish failed: %s", esp_err_to_name(err));
-    update_status(PEAK_OTA_STATE_FAILED, bytes_read, image_size, 0, err,
-                  "validation failed");
-    goto done;
-  }
-
-  update_status(PEAK_OTA_STATE_SUCCESS, image_size, image_size, 0, ESP_OK,
-                "rebooting");
-  vTaskDelay(pdMS_TO_TICKS(PEAK_OTA_RESTART_DELAY_MS));
-  esp_restart();
-
-done:
-  xSemaphoreTake(s_mutex, portMAX_DELAY);
-  s_task_handle = NULL;
-  xSemaphoreGive(s_mutex);
-  vTaskDelete(NULL);
+static bool state_can_begin(peak_ota_state_t state) {
+  return state == PEAK_OTA_STATE_IDLE || state == PEAK_OTA_STATE_FAILED ||
+         state == PEAK_OTA_STATE_ABORTED;
 }
 
 esp_err_t peak_ota_init(peak_ota_status_cb_t status_cb, void *user_data) {
+  psa_status_t crypto_status = psa_crypto_init();
+  if (crypto_status != PSA_SUCCESS) {
+    ESP_LOGE(TAG, "Failed to initialize PSA Crypto: %d", (int)crypto_status);
+    return ESP_FAIL;
+  }
+
   if (s_mutex == NULL) {
-    s_mutex = xSemaphoreCreateMutex();
+    s_mutex = xSemaphoreCreateMutexStatic(&s_mutex_storage);
     if (s_mutex == NULL) {
       return ESP_ERR_NO_MEM;
     }
@@ -193,75 +124,296 @@ esp_err_t peak_ota_init(peak_ota_status_cb_t status_cb, void *user_data) {
   s_status_cb = status_cb;
   s_status_user_data = user_data;
   xSemaphoreGive(s_mutex);
-
   return ESP_OK;
 }
 
-esp_err_t peak_ota_set_url(const char *url) {
+esp_err_t peak_ota_begin(uint32_t image_size,
+                         const uint8_t expected_sha256[PEAK_OTA_SHA256_LEN]) {
   if (s_mutex == NULL) {
     return ESP_ERR_INVALID_STATE;
   }
-
-  if (!url_is_supported(url)) {
+  if (expected_sha256 == NULL) {
     return ESP_ERR_INVALID_ARG;
   }
-
-  size_t url_len = strlen(url);
-  if (url_len == 0 || url_len >= PEAK_OTA_URL_MAX_LEN) {
-    return ESP_ERR_INVALID_ARG;
+  if (image_size == 0) {
+    return ESP_ERR_INVALID_SIZE;
   }
 
   xSemaphoreTake(s_mutex, portMAX_DELAY);
-  if (s_task_handle != NULL) {
+  if (!state_can_begin(s_status.state)) {
     xSemaphoreGive(s_mutex);
     return ESP_ERR_INVALID_STATE;
   }
 
-  copy_text(s_status.url, sizeof(s_status.url), url);
+  reset_session_locked();
+  uint32_t session_id = ++s_session_id;
+  s_last_notified_bytes = 0;
+  memcpy(s_expected_sha256, expected_sha256, sizeof(s_expected_sha256));
+  s_status = (peak_ota_status_t){
+      .state = PEAK_OTA_STATE_PREPARING,
+      .bytes_written = 0,
+      .total_size = image_size,
+      .last_error = ESP_OK,
+  };
+  status_notification_t preparing = make_notification_locked();
+  xSemaphoreGive(s_mutex);
+  publish_notification(&preparing);
+
+  xSemaphoreTake(s_mutex, portMAX_DELAY);
+  if (s_status.state != PEAK_OTA_STATE_PREPARING ||
+      s_session_id != session_id) {
+    xSemaphoreGive(s_mutex);
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  s_partition = esp_ota_get_next_update_partition(NULL);
+  if (s_partition == NULL) {
+    status_notification_t failed = fail_session_locked(ESP_ERR_NOT_FOUND);
+    xSemaphoreGive(s_mutex);
+    publish_notification(&failed);
+    return ESP_ERR_NOT_FOUND;
+  }
+  if (image_size > s_partition->size) {
+    status_notification_t failed = fail_session_locked(ESP_ERR_INVALID_SIZE);
+    xSemaphoreGive(s_mutex);
+    publish_notification(&failed);
+    return ESP_ERR_INVALID_SIZE;
+  }
+
+  psa_status_t hash_status =
+      psa_hash_setup(&s_hash_operation, PSA_ALG_SHA_256);
+  if (hash_status != PSA_SUCCESS) {
+    ESP_LOGE(TAG, "Failed to initialize SHA-256 operation: %d",
+             (int)hash_status);
+    status_notification_t failed = fail_session_locked(ESP_FAIL);
+    xSemaphoreGive(s_mutex);
+    publish_notification(&failed);
+    return ESP_FAIL;
+  }
+  s_hash_active = true;
+
+  esp_err_t err = esp_ota_begin(s_partition, image_size, &s_ota_handle);
+  if (err != ESP_OK) {
+    status_notification_t failed = fail_session_locked(err);
+    xSemaphoreGive(s_mutex);
+    publish_notification(&failed);
+    return err;
+  }
+  s_ota_active = true;
+
   s_status.state = PEAK_OTA_STATE_READY;
-  s_status.bytes_read = 0;
-  s_status.image_size = -1;
-  s_status.percent = -1;
-  s_status.speed_bps = 0;
-  s_status.last_error = ESP_OK;
-  copy_text(s_status.message, sizeof(s_status.message), "url set");
+  status_notification_t ready = make_notification_locked();
   xSemaphoreGive(s_mutex);
-
-  publish_status();
+  publish_notification(&ready);
   return ESP_OK;
 }
 
-esp_err_t peak_ota_start(void) {
+esp_err_t peak_ota_write(uint32_t offset, const uint8_t *data, size_t len) {
+  if (s_mutex == NULL) {
+    return ESP_ERR_INVALID_STATE;
+  }
+  if (data == NULL || len == 0) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  xSemaphoreTake(s_mutex, portMAX_DELAY);
+  if (!s_ota_active ||
+      (s_status.state != PEAK_OTA_STATE_READY &&
+       s_status.state != PEAK_OTA_STATE_RECEIVING)) {
+    xSemaphoreGive(s_mutex);
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  if (offset != s_status.bytes_written) {
+    status_notification_t failed = fail_session_locked(ESP_ERR_INVALID_ARG);
+    xSemaphoreGive(s_mutex);
+    publish_notification(&failed);
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  uint32_t remaining = s_status.total_size - s_status.bytes_written;
+  if (len > remaining) {
+    status_notification_t failed = fail_session_locked(ESP_ERR_INVALID_SIZE);
+    xSemaphoreGive(s_mutex);
+    publish_notification(&failed);
+    return ESP_ERR_INVALID_SIZE;
+  }
+
+  esp_err_t err = esp_ota_write(s_ota_handle, data, len);
+  if (err != ESP_OK) {
+    status_notification_t failed = fail_session_locked(err);
+    xSemaphoreGive(s_mutex);
+    publish_notification(&failed);
+    return err;
+  }
+
+  psa_status_t hash_status = psa_hash_update(&s_hash_operation, data, len);
+  if (hash_status != PSA_SUCCESS) {
+    ESP_LOGE(TAG, "Failed to update SHA-256 operation: %d", (int)hash_status);
+    status_notification_t failed = fail_session_locked(ESP_FAIL);
+    xSemaphoreGive(s_mutex);
+    publish_notification(&failed);
+    return ESP_FAIL;
+  }
+
+  bool entered_receiving = s_status.state == PEAK_OTA_STATE_READY;
+  s_status.state = PEAK_OTA_STATE_RECEIVING;
+  s_status.bytes_written += (uint32_t)len;
+  s_status.last_error = ESP_OK;
+  uint32_t previous_percent =
+      (uint32_t)(((uint64_t)s_last_notified_bytes * 100) /
+                 s_status.total_size);
+  uint32_t current_percent =
+      (uint32_t)(((uint64_t)s_status.bytes_written * 100) /
+                 s_status.total_size);
+  bool should_notify = entered_receiving ||
+                       current_percent != previous_percent ||
+                       s_status.bytes_written == s_status.total_size;
+  status_notification_t receiving = {0};
+  if (should_notify) {
+    s_last_notified_bytes = s_status.bytes_written;
+    receiving = make_notification_locked();
+  }
+  xSemaphoreGive(s_mutex);
+  if (should_notify) {
+    publish_notification(&receiving);
+  }
+  return ESP_OK;
+}
+
+esp_err_t peak_ota_finish(void) {
   if (s_mutex == NULL) {
     return ESP_ERR_INVALID_STATE;
   }
 
   xSemaphoreTake(s_mutex, portMAX_DELAY);
-  if (s_task_handle != NULL) {
+  if (!s_ota_active ||
+      (s_status.state != PEAK_OTA_STATE_READY &&
+       s_status.state != PEAK_OTA_STATE_RECEIVING)) {
     xSemaphoreGive(s_mutex);
     return ESP_ERR_INVALID_STATE;
   }
 
-  if (!url_is_supported(s_status.url)) {
+  if (s_status.bytes_written != s_status.total_size) {
+    status_notification_t failed = fail_session_locked(ESP_ERR_INVALID_SIZE);
     xSemaphoreGive(s_mutex);
-    return ESP_ERR_INVALID_STATE;
+    publish_notification(&failed);
+    return ESP_ERR_INVALID_SIZE;
   }
+
+  s_status.state = PEAK_OTA_STATE_VERIFYING;
+  uint32_t session_id = s_session_id;
+  status_notification_t verifying = make_notification_locked();
   xSemaphoreGive(s_mutex);
+  publish_notification(&verifying);
 
-  if (xTaskCreate(ota_task, "peak_ota", PEAK_OTA_TASK_STACK_SIZE, NULL,
-                  PEAK_OTA_TASK_PRIORITY, &s_task_handle) != pdPASS) {
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-    s_task_handle = NULL;
+  xSemaphoreTake(s_mutex, portMAX_DELAY);
+  if (!s_ota_active || s_status.state != PEAK_OTA_STATE_VERIFYING ||
+      s_session_id != session_id) {
     xSemaphoreGive(s_mutex);
-    return ESP_ERR_NO_MEM;
+    return ESP_ERR_INVALID_STATE;
   }
 
+  psa_status_t hash_status =
+      psa_hash_verify(&s_hash_operation, s_expected_sha256,
+                      sizeof(s_expected_sha256));
+  if (hash_status != PSA_SUCCESS) {
+    esp_err_t hash_err = hash_status == PSA_ERROR_INVALID_SIGNATURE
+                             ? ESP_ERR_INVALID_CRC
+                             : ESP_FAIL;
+    if (hash_err != ESP_ERR_INVALID_CRC) {
+      ESP_LOGE(TAG, "Failed to verify SHA-256 operation: %d",
+               (int)hash_status);
+    }
+    status_notification_t failed = fail_session_locked(hash_err);
+    xSemaphoreGive(s_mutex);
+    publish_notification(&failed);
+    return hash_err;
+  }
+  s_hash_operation = (psa_hash_operation_t)PSA_HASH_OPERATION_INIT;
+  s_hash_active = false;
+
+  esp_err_t err = esp_ota_end(s_ota_handle);
+  s_ota_active = false;
+  s_ota_handle = 0;
+  if (err != ESP_OK) {
+    status_notification_t failed = fail_session_locked(err);
+    xSemaphoreGive(s_mutex);
+    publish_notification(&failed);
+    return err;
+  }
+
+  err = esp_ota_set_boot_partition(s_partition);
+  if (err != ESP_OK) {
+    status_notification_t failed = fail_session_locked(err);
+    xSemaphoreGive(s_mutex);
+    publish_notification(&failed);
+    return err;
+  }
+
+  s_partition = NULL;
+  memset(s_expected_sha256, 0, sizeof(s_expected_sha256));
+  s_status.state = PEAK_OTA_STATE_SUCCESS;
+  s_status.last_error = ESP_OK;
+  status_notification_t success = make_notification_locked();
+  xSemaphoreGive(s_mutex);
+  publish_notification(&success);
   return ESP_OK;
+}
+
+esp_err_t peak_ota_abort(void) {
+  if (s_mutex == NULL) {
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  xSemaphoreTake(s_mutex, portMAX_DELAY);
+  bool is_preparing = s_status.state == PEAK_OTA_STATE_PREPARING;
+  bool is_active_state =
+      s_status.state == PEAK_OTA_STATE_READY ||
+      s_status.state == PEAK_OTA_STATE_RECEIVING ||
+      s_status.state == PEAK_OTA_STATE_VERIFYING;
+  if (!is_preparing && !is_active_state) {
+    xSemaphoreGive(s_mutex);
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  esp_err_t abort_err = ESP_OK;
+  if (s_ota_active) {
+    abort_err = esp_ota_abort(s_ota_handle);
+    if (abort_err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to abort OTA handle: %s",
+               esp_err_to_name(abort_err));
+    }
+  }
+  s_ota_active = false;
+  s_ota_handle = 0;
+
+  if (s_hash_active) {
+    psa_status_t hash_status = psa_hash_abort(&s_hash_operation);
+    if (hash_status != PSA_SUCCESS && abort_err == ESP_OK) {
+      ESP_LOGE(TAG, "Failed to abort SHA-256 operation: %d",
+               (int)hash_status);
+      abort_err = ESP_FAIL;
+    }
+  }
+  s_hash_operation = (psa_hash_operation_t)PSA_HASH_OPERATION_INIT;
+  s_hash_active = false;
+  s_partition = NULL;
+  memset(s_expected_sha256, 0, sizeof(s_expected_sha256));
+  s_status.state = PEAK_OTA_STATE_ABORTED;
+  s_status.last_error = abort_err;
+  status_notification_t aborted = make_notification_locked();
+  xSemaphoreGive(s_mutex);
+  publish_notification(&aborted);
+  return abort_err;
 }
 
 esp_err_t peak_ota_get_status(peak_ota_status_t *status) {
-  if (s_mutex == NULL || status == NULL) {
+  if (status == NULL) {
     return ESP_ERR_INVALID_ARG;
+  }
+  if (s_mutex == NULL) {
+    return ESP_ERR_INVALID_STATE;
   }
 
   xSemaphoreTake(s_mutex, portMAX_DELAY);
@@ -274,39 +426,21 @@ const char *peak_ota_state_to_string(peak_ota_state_t state) {
   switch (state) {
   case PEAK_OTA_STATE_IDLE:
     return "idle";
+  case PEAK_OTA_STATE_PREPARING:
+    return "preparing";
   case PEAK_OTA_STATE_READY:
     return "ready";
-  case PEAK_OTA_STATE_STARTING:
-    return "starting";
-  case PEAK_OTA_STATE_DOWNLOADING:
-    return "downloading";
+  case PEAK_OTA_STATE_RECEIVING:
+    return "receiving";
+  case PEAK_OTA_STATE_VERIFYING:
+    return "verifying";
   case PEAK_OTA_STATE_SUCCESS:
     return "success";
   case PEAK_OTA_STATE_FAILED:
     return "failed";
+  case PEAK_OTA_STATE_ABORTED:
+    return "aborted";
   default:
     return "unknown";
   }
-}
-
-int peak_ota_status_to_json(const peak_ota_status_t *status, char *buffer,
-                            size_t buffer_len) {
-  if (status == NULL || buffer == NULL || buffer_len == 0) {
-    return -1;
-  }
-
-  int written =
-      snprintf(buffer, buffer_len,
-               "{\"state\":\"%s\",\"percent\":%d,\"bytes\":%d,"
-               "\"total\":%d,\"speed_bps\":%" PRIu32
-               ",\"error\":\"%s\",\"message\":\"%s\"}",
-               peak_ota_state_to_string(status->state), status->percent,
-               status->bytes_read, status->image_size, status->speed_bps,
-               esp_err_to_name(status->last_error), status->message);
-
-  if (written < 0) {
-    return -1;
-  }
-
-  return (written >= (int)buffer_len) ? (int)buffer_len - 1 : written;
 }
