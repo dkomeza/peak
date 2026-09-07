@@ -27,6 +27,9 @@
 #include "io/ltr329.h"
 #include "io/t117.h"
 
+#include "peak_ble/peak_ble.h"
+#include "vesc/vesc_bridge.h"
+
 #define PEAK_APP_TASK_STACK_SIZE 8192
 
 static const char *TAG = "peak_app";
@@ -95,7 +98,7 @@ static void peak_app_task(void *arg) {
   nvs_init();
   buttons_init();
 
-  boot(handle_boot_mountain_mode);
+  boot_mode_t boot_mode = boot(handle_boot_mountain_mode);
   ESP_ERROR_CHECK(display_start());
   ESP_ERROR_CHECK(display_event_adapter_start());
 
@@ -120,6 +123,24 @@ static void peak_app_task(void *arg) {
              handle_button_power_long_stop);
   buttons_on(BTN_UP, BTN_EVENT_CLICK, handle_gear_up);
   buttons_on(BTN_DOWN, BTN_EVENT_CLICK, handle_gear_down);
+
+  peak_ble_config_t ble_config = {
+      .ota_enabled = boot_mode == BOOT_MODE_CONFIG,
+  };
+  esp_err_t ble_ret = peak_ble_start(&ble_config);
+  if (ble_ret != ESP_OK) {
+    ESP_LOGE(TAG, "BLE initialization failed: %s", esp_err_to_name(ble_ret));
+  } else if (s_esc_ready) {
+    esp_err_t bridge_ret = vesc_bridge_init();
+    if (bridge_ret == ESP_OK) {
+      const transport_iface_t *transports[] = {&transport_peak_ble};
+      bridge_ret = vesc_bridge_start(transports, 1);
+    }
+    if (bridge_ret != ESP_OK) {
+      ESP_LOGW(TAG, "VESC BLE bridge initialization failed: %s",
+               esp_err_to_name(bridge_ret));
+    }
+  }
 
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(1000));
