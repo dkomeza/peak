@@ -72,7 +72,7 @@ static void can_release_tx_slot_from_isr(can_tx_slot_t *slot) {
 }
 
 static void can_rx_dispatcher_task(void *arg) {
-  twai_frame_t rx_msg;
+  can_rx_msg_t rx_msg;
 
   while (1) {
     if (xQueueReceive(s_rx_queue, &rx_msg, portMAX_DELAY) == pdTRUE) {
