@@ -35,6 +35,9 @@ static const char *TAG = "peak_ble";
 #define PEAK_BLE_NOTIFY_RETRIES 4
 #define PEAK_BLE_NOTIFY_WAIT_MS 100
 #define PEAK_BLE_SUCCESS_REBOOT_DELAY_MS 1500
+#define PEAK_BLE_OTA_CONN_INTERVAL_MIN 6
+#define PEAK_BLE_OTA_CONN_INTERVAL_MAX 12
+#define PEAK_BLE_OTA_SUPERVISION_TIMEOUT 400
 #define PEAK_BLE_DEVICE_NAME_LEN 9
 #define PEAK_BLE_DEVICE_NAME_BUFFER_LEN (PEAK_BLE_DEVICE_NAME_LEN + 1)
 
@@ -605,21 +608,51 @@ static void set_disconnected(uint16_t conn_handle) {
   }
 }
 
+static void request_ota_connection_interval(uint16_t conn_handle) {
+  const struct ble_gap_upd_params params = {
+      .itvl_min = PEAK_BLE_OTA_CONN_INTERVAL_MIN,
+      .itvl_max = PEAK_BLE_OTA_CONN_INTERVAL_MAX,
+      .latency = 0,
+      .supervision_timeout = PEAK_BLE_OTA_SUPERVISION_TIMEOUT,
+      .min_ce_len = 0,
+      .max_ce_len = 0,
+  };
+  int rc = ble_gap_update_params(conn_handle, &params);
+  if (rc != 0 && rc != BLE_HS_EALREADY) {
+    ESP_LOGW(TAG, "Failed to request fast BLE connection interval: rc=%d", rc);
+  }
+}
+
+static void log_connection_interval(uint16_t conn_handle) {
+  struct ble_gap_conn_desc desc;
+  if (ble_gap_conn_find(conn_handle, &desc) != 0) {
+    return;
+  }
+
+  ESP_LOGI(TAG, "BLE connection interval %.2f ms, latency=%u",
+           desc.conn_itvl * 1.25f, desc.conn_latency);
+}
+
 static int gap_event(struct ble_gap_event *event, void *arg) {
   (void)arg;
 
   switch (event->type) {
   case BLE_GAP_EVENT_CONNECT:
     if (event->connect.status == 0) {
+      bool ota_enabled;
       taskENTER_CRITICAL(&s_state_lock);
       s_state.conn_handle = event->connect.conn_handle;
       s_state.mtu = BLE_ATT_MTU_DFLT;
       s_state.nus_subscribed = false;
       s_state.ota_status_subscribed = false;
       s_state.conn_generation++;
+      ota_enabled = s_state.ota_enabled;
       taskEXIT_CRITICAL(&s_state_lock);
       ESP_LOGI(TAG, "BLE client connected (handle=%u)",
                event->connect.conn_handle);
+      if (ota_enabled) {
+        request_ota_connection_interval(event->connect.conn_handle);
+      }
     } else {
       ESP_LOGW(TAG, "BLE connection failed: status=%d", event->connect.status);
       peak_ble_advertise();
@@ -640,6 +673,15 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
     }
     taskEXIT_CRITICAL(&s_state_lock);
     ESP_LOGI(TAG, "BLE MTU updated to %u", event->mtu.value);
+    break;
+
+  case BLE_GAP_EVENT_CONN_UPDATE:
+    if (event->conn_update.status != 0) {
+      ESP_LOGW(TAG, "BLE connection parameter update failed: status=%d",
+               event->conn_update.status);
+    } else {
+      log_connection_interval(event->conn_update.conn_handle);
+    }
     break;
 
   case BLE_GAP_EVENT_SUBSCRIBE: {
