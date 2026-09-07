@@ -771,6 +771,25 @@ static void initialize_device_name_fallback(void) {
   snprintf(s_device_name, sizeof(s_device_name), "PEAK-0000");
 }
 
+static esp_err_t recover_hosted_bt_controller(void) {
+  // The C6 can remain powered while the P4 restarts. In that case the P4 loses
+  // its local lifecycle state but the controller may still be initialized or
+  // enabled from the previous host session.
+  esp_err_t err = esp_hosted_bt_controller_disable();
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+    ESP_LOGE(TAG, "Failed to disable stale hosted BT controller: %s",
+             esp_err_to_name(err));
+    return err;
+  }
+
+  err = esp_hosted_bt_controller_deinit(false);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to deinitialize stale hosted BT controller: %s",
+             esp_err_to_name(err));
+  }
+  return err;
+}
+
 static esp_err_t hosted_bt_start(void) {
   esp_err_t err = esp_hosted_init();
   if (err != ESP_OK) {
@@ -796,6 +815,14 @@ static esp_err_t hosted_bt_start(void) {
   }
 
   err = esp_hosted_bt_controller_init();
+  if (err == ESP_ERR_INVALID_STATE) {
+    ESP_LOGW(TAG, "Hosted BT controller was left active by a prior P4 boot; "
+                  "resetting it");
+    err = recover_hosted_bt_controller();
+    if (err == ESP_OK) {
+      err = esp_hosted_bt_controller_init();
+    }
+  }
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Hosted BT controller init failed: %s", esp_err_to_name(err));
     goto fail;
