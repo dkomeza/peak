@@ -32,6 +32,20 @@ static void on_esc_update(const esc_state_t *state, void *user_ctx) {
     display_state.valid_fields |= DISPLAY_STATE_GEAR;
     display_state.gear = state->gear;
   }
+  if ((state->valid_fields & ESC_STATE_SUPPORT_MODE) != 0) {
+    switch (state->support_mode) {
+    case ESC_SUPPORT_MODE_PAS:
+      display_state.support_mode = DISPLAY_SUPPORT_MODE_PAS;
+      display_state.valid_fields |= DISPLAY_STATE_SUPPORT_MODE;
+      break;
+    case ESC_SUPPORT_MODE_TORQUE:
+      display_state.support_mode = DISPLAY_SUPPORT_MODE_TORQUE;
+      display_state.valid_fields |= DISPLAY_STATE_SUPPORT_MODE;
+      break;
+    default:
+      break;
+    }
+  }
 
   if (display_state.valid_fields != 0) {
     publish_display_state(&display_state);

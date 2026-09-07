@@ -7,9 +7,9 @@
 #define DISPLAY_HOME_BATTERY_HEIGHT 40
 #define DISPLAY_HOME_BATTERY_TERMINAL_WIDTH 7
 #define DISPLAY_HOME_BATTERY_TERMINAL_HEIGHT 16
-#define DISPLAY_HOME_GEAR_WIDTH 48
-#define DISPLAY_HOME_GEAR_HEIGHT 40
-#define DISPLAY_HOME_GEAR_GAP 14
+#define DISPLAY_HOME_GEAR_WIDTH 58
+#define DISPLAY_HOME_GEAR_HEIGHT 24
+#define DISPLAY_HOME_GEAR_GAP 12
 
 #define COLOR_BACKGROUND 0x000000
 #define COLOR_TEXT 0xF4F4F5
@@ -61,6 +61,37 @@ static bool gear_from_state(const display_state_t *state, uint8_t *gear) {
 
   *gear = state->gear;
   return true;
+}
+
+static bool support_mode_from_state(const display_state_t *state,
+                                    display_support_mode_t *support_mode) {
+  if ((state->valid_fields & DISPLAY_STATE_SUPPORT_MODE) == 0 ||
+      state->support_mode > DISPLAY_SUPPORT_MODE_TORQUE) {
+    return false;
+  }
+
+  *support_mode = state->support_mode;
+  return true;
+}
+
+static void update_support_mode(display_home_t *home,
+                                const display_state_t *state) {
+  display_support_mode_t support_mode;
+  bool valid = support_mode_from_state(state, &support_mode);
+  if (home->support_mode_valid == valid &&
+      (!valid || home->support_mode_display == support_mode)) {
+    return;
+  }
+
+  if (valid) {
+    lv_label_set_text(home->support_mode,
+                      support_mode == DISPLAY_SUPPORT_MODE_TORQUE ? "TORQUE"
+                                                                  : "PAS");
+    home->support_mode_display = support_mode;
+  } else {
+    lv_label_set_text(home->support_mode, "--");
+  }
+  home->support_mode_valid = valid;
 }
 
 static void update_speed(display_home_t *home, const display_state_t *state) {
@@ -168,6 +199,13 @@ void display_home_create(display_home_t *home) {
                               LV_PART_MAIN);
   lv_obj_align(home->battery_voltage, LV_ALIGN_CENTER, 0, 0);
 
+  home->support_mode = lv_label_create(home->screen);
+  lv_label_set_text(home->support_mode, "--");
+  lv_obj_set_style_text_color(home->support_mode,
+                              lv_color_hex(COLOR_GEAR_ACTIVE), LV_PART_MAIN);
+  lv_obj_set_style_text_letter_space(home->support_mode, 2, LV_PART_MAIN);
+  lv_obj_align(home->support_mode, LV_ALIGN_TOP_MID, 0, 158);
+
   lv_obj_t *speed_group = lv_obj_create(home->screen);
   make_transparent(speed_group);
   lv_obj_set_size(speed_group, 240, 116);
@@ -207,7 +245,7 @@ void display_home_create(display_home_t *home) {
                     DISPLAY_HOME_GEAR_HEIGHT);
     lv_obj_set_style_bg_opa(home->gear[i], LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(home->gear[i], 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(home->gear[i], 9, LV_PART_MAIN);
+    lv_obj_set_style_radius(home->gear[i], 6, LV_PART_MAIN);
     lv_obj_set_style_pad_all(home->gear[i], 0, LV_PART_MAIN);
     set_gear_active(home->gear[i], false);
   }
@@ -218,6 +256,7 @@ void display_home_update(display_home_t *home, const display_state_t *state) {
     return;
   }
 
+  update_support_mode(home, state);
   update_speed(home, state);
   update_battery_voltage(home, state);
   update_gear(home, state);

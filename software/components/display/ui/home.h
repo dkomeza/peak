@@ -15,10 +15,13 @@
  */
 typedef struct {
   lv_obj_t *screen;
+  lv_obj_t *support_mode;
   lv_obj_t *speed;
   lv_obj_t *battery_voltage;
   lv_obj_t *gear[DISPLAY_HOME_GEAR_COUNT];
 
+  bool support_mode_valid;
+  display_support_mode_t support_mode_display;
   bool speed_valid;
   int32_t speed_display_kph;
   bool battery_voltage_valid;
