@@ -1,5 +1,5 @@
 idf_component_register(SRCS "main.c"
-                            "display_event_adapter.c"
+                            "display_adapter.c"
                             "buttons.c"
                             "power.c"
                             "boot/boot.c"

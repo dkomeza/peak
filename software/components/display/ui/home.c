@@ -1,129 +1,224 @@
 #include "home.h"
 
-#include "metric_card.h"
-#include "lvgl.h"
+#include <math.h>
+#include <stdio.h>
 
-typedef struct {
-  lv_obj_t *speed;
-  lv_obj_t *status;
-  metric_card_t battery;
-  metric_card_t power;
-  metric_card_t gear;
-  metric_card_t mode;
-} home_view_t;
+#define DISPLAY_HOME_BATTERY_WIDTH 104
+#define DISPLAY_HOME_BATTERY_HEIGHT 40
+#define DISPLAY_HOME_BATTERY_TERMINAL_WIDTH 7
+#define DISPLAY_HOME_BATTERY_TERMINAL_HEIGHT 16
+#define DISPLAY_HOME_GEAR_WIDTH 48
+#define DISPLAY_HOME_GEAR_HEIGHT 40
+#define DISPLAY_HOME_GEAR_GAP 14
 
-static home_view_t s_view;
+#define COLOR_BACKGROUND 0x000000
+#define COLOR_TEXT 0xF4F4F5
+#define COLOR_MUTED 0x8E8E93
+#define COLOR_GEAR_INACTIVE 0x27292E
+#define COLOR_GEAR_ACTIVE 0x10B981
 
-static const char *support_mode_name(uint8_t mode) {
-  static const char *const names[] = {"PAS", "TORQUE"};
-  return mode < sizeof(names) / sizeof(names[0]) ? names[mode] : "UNKNOWN";
+static void make_transparent(lv_obj_t *obj) {
+  lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(obj, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
+  lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
 }
 
-static const char *ride_mode_name(uint8_t mode) {
-  static const char *const names[] = {"NORMAL", "MOUNTAIN"};
-  return mode < sizeof(names) / sizeof(names[0]) ? names[mode] : "UNKNOWN";
+static void set_gear_active(lv_obj_t *gear, bool active) {
+  lv_obj_set_style_bg_color(
+      gear, lv_color_hex(active ? COLOR_GEAR_ACTIVE : COLOR_GEAR_INACTIVE),
+      LV_PART_MAIN);
 }
 
-static void set_metric(lv_obj_t *value, lv_obj_t *detail, const char *text,
-                       const char *unit) {
-  lv_label_set_text(value, text);
-  lv_label_set_text(detail, unit);
+static bool speed_from_state(const display_state_t *state, int32_t *speed_kph) {
+  if ((state->valid_fields & DISPLAY_STATE_SPEED) == 0 ||
+      !isfinite(state->speed_kph) || state->speed_kph < 0.0f ||
+      state->speed_kph > 999.0f) {
+    return false;
+  }
+
+  *speed_kph = (int32_t)(state->speed_kph + 0.5f);
+  return true;
 }
 
-void display_home_create(void) {
-  lv_obj_t *screen = lv_screen_active();
-  lv_obj_set_style_bg_color(screen, lv_color_black(), LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, LV_PART_MAIN);
+static bool voltage_from_state(const display_state_t *state,
+                               int32_t *voltage_tenths) {
+  if ((state->valid_fields & DISPLAY_STATE_BATTERY_VOLTAGE) == 0 ||
+      !isfinite(state->battery_voltage_v) || state->battery_voltage_v < 0.0f ||
+      state->battery_voltage_v > 999.9f) {
+    return false;
+  }
 
-  lv_obj_t *title = lv_label_create(screen);
-  lv_label_set_text(title, "PEAK");
-  lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
+  *voltage_tenths = (int32_t)(state->battery_voltage_v * 10.0f + 0.5f);
+  return true;
+}
 
-  s_view.speed = lv_label_create(screen);
-  lv_label_set_text(s_view.speed, "--.- km/h");
-  lv_obj_set_style_text_color(s_view.speed, lv_color_white(), LV_PART_MAIN);
-  lv_obj_align(s_view.speed, LV_ALIGN_TOP_MID, 0, 92);
+static bool gear_from_state(const display_state_t *state, uint8_t *gear) {
+  if ((state->valid_fields & DISPLAY_STATE_GEAR) == 0 || state->gear == 0 ||
+      state->gear > DISPLAY_HOME_GEAR_COUNT) {
+    return false;
+  }
 
-  s_view.status = lv_label_create(screen);
-  lv_label_set_text(s_view.status, "Waiting for ESC telemetry");
-  lv_obj_set_style_text_color(s_view.status, lv_color_hex(0x8E8E93),
+  *gear = state->gear;
+  return true;
+}
+
+static void update_speed(display_home_t *home, const display_state_t *state) {
+  int32_t speed_kph;
+  bool valid = speed_from_state(state, &speed_kph);
+  if (home->speed_valid == valid &&
+      (!valid || home->speed_display_kph == speed_kph)) {
+    return;
+  }
+
+  if (valid) {
+    char text[8];
+    snprintf(text, sizeof(text), "%ld", (long)speed_kph);
+    lv_label_set_text(home->speed, text);
+    home->speed_display_kph = speed_kph;
+  } else {
+    lv_label_set_text(home->speed, "--");
+  }
+  home->speed_valid = valid;
+}
+
+static void update_battery_voltage(display_home_t *home,
+                                   const display_state_t *state) {
+  int32_t voltage_tenths;
+  bool valid = voltage_from_state(state, &voltage_tenths);
+  if (home->battery_voltage_valid == valid &&
+      (!valid || home->battery_voltage_tenths == voltage_tenths)) {
+    return;
+  }
+
+  if (valid) {
+    char text[20];
+    snprintf(text, sizeof(text), "%ld.%ld V", (long)(voltage_tenths / 10),
+             (long)(voltage_tenths % 10));
+    lv_label_set_text(home->battery_voltage, text);
+    home->battery_voltage_tenths = voltage_tenths;
+  } else {
+    lv_label_set_text(home->battery_voltage, "--.- V");
+  }
+  home->battery_voltage_valid = valid;
+}
+
+static void update_gear(display_home_t *home, const display_state_t *state) {
+  uint8_t gear;
+  bool valid = gear_from_state(state, &gear);
+  if (home->gear_valid == valid && (!valid || home->gear_display == gear)) {
+    return;
+  }
+
+  for (uint8_t i = 0; i < DISPLAY_HOME_GEAR_COUNT; ++i) {
+    set_gear_active(home->gear[i], valid && i < gear);
+  }
+  home->gear_valid = valid;
+  home->gear_display = valid ? gear : 0;
+}
+
+void display_home_create(display_home_t *home) {
+  if (home == NULL) {
+    return;
+  }
+
+  *home = (display_home_t){0};
+  home->screen = lv_screen_active();
+  lv_obj_remove_flag(home->screen, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(home->screen, lv_color_hex(COLOR_BACKGROUND),
+                            LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(home->screen, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_border_width(home->screen, 0, LV_PART_MAIN);
+
+  lv_obj_t *battery = lv_obj_create(home->screen);
+  make_transparent(battery);
+  lv_obj_set_size(battery,
+                  DISPLAY_HOME_BATTERY_WIDTH +
+                      DISPLAY_HOME_BATTERY_TERMINAL_WIDTH + 4,
+                  DISPLAY_HOME_BATTERY_HEIGHT);
+  lv_obj_align(battery, LV_ALIGN_TOP_RIGHT, -28, 28);
+
+  lv_obj_t *battery_body = lv_obj_create(battery);
+  lv_obj_remove_flag(battery_body, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_size(battery_body, DISPLAY_HOME_BATTERY_WIDTH,
+                  DISPLAY_HOME_BATTERY_HEIGHT);
+  lv_obj_set_style_bg_opa(battery_body, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(battery_body, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(battery_body, lv_color_hex(COLOR_TEXT),
+                                LV_PART_MAIN);
+  lv_obj_set_style_border_opa(battery_body, LV_OPA_70, LV_PART_MAIN);
+  lv_obj_set_style_radius(battery_body, 10, LV_PART_MAIN);
+  lv_obj_set_style_pad_all(battery_body, 0, LV_PART_MAIN);
+  lv_obj_align(battery_body, LV_ALIGN_LEFT_MID, 0, 0);
+
+  lv_obj_t *battery_terminal = lv_obj_create(battery);
+  lv_obj_remove_flag(battery_terminal, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_size(battery_terminal, DISPLAY_HOME_BATTERY_TERMINAL_WIDTH,
+                  DISPLAY_HOME_BATTERY_TERMINAL_HEIGHT);
+  lv_obj_set_style_bg_color(battery_terminal, lv_color_hex(COLOR_TEXT),
+                            LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(battery_terminal, LV_OPA_70, LV_PART_MAIN);
+  lv_obj_set_style_border_width(battery_terminal, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(battery_terminal, 3, LV_PART_MAIN);
+  lv_obj_align(battery_terminal, LV_ALIGN_RIGHT_MID, 0, 0);
+
+  home->battery_voltage = lv_label_create(battery_body);
+  lv_label_set_text(home->battery_voltage, "--.- V");
+  lv_obj_set_style_text_color(home->battery_voltage, lv_color_hex(COLOR_TEXT),
                               LV_PART_MAIN);
-  lv_obj_align(s_view.status, LV_ALIGN_TOP_MID, 0, 128);
+  lv_obj_align(home->battery_voltage, LV_ALIGN_CENTER, 0, 0);
 
-  s_view.battery = metric_card_create(screen, "BATTERY", LV_ALIGN_CENTER,
-                                      -105, 24);
-  s_view.power = metric_card_create(screen, "POWER", LV_ALIGN_CENTER, 105, 24);
-  s_view.gear = metric_card_create(screen, "ASSIST", LV_ALIGN_CENTER, -105,
-                                   148);
-  s_view.mode = metric_card_create(screen, "MODE", LV_ALIGN_CENTER, 105, 148);
+  lv_obj_t *speed_group = lv_obj_create(home->screen);
+  make_transparent(speed_group);
+  lv_obj_set_size(speed_group, 240, 116);
+  lv_obj_align(speed_group, LV_ALIGN_TOP_MID, 0, 196);
 
-  set_metric(s_view.battery.value, s_view.battery.detail, "--", "%");
-  set_metric(s_view.power.value, s_view.power.detail, "--", "W");
-  set_metric(s_view.gear.value, s_view.gear.detail, "--", "gear");
-  set_metric(s_view.mode.value, s_view.mode.detail, "--", "support");
+  home->speed = lv_label_create(speed_group);
+  lv_label_set_text(home->speed, "--");
+  lv_obj_set_style_text_color(home->speed, lv_color_hex(COLOR_TEXT),
+                              LV_PART_MAIN);
+#if LV_FONT_MONTSERRAT_48
+  lv_obj_set_style_text_font(home->speed, &lv_font_montserrat_48, LV_PART_MAIN);
+#endif
+  lv_obj_align(home->speed, LV_ALIGN_TOP_MID, 0, 0);
+
+  lv_obj_t *speed_unit = lv_label_create(speed_group);
+  lv_label_set_text(speed_unit, "km/h");
+  lv_obj_set_style_text_color(speed_unit, lv_color_hex(COLOR_MUTED),
+                              LV_PART_MAIN);
+  lv_obj_align(speed_unit, LV_ALIGN_TOP_MID, 0, 62);
+
+  lv_obj_t *gear_group = lv_obj_create(home->screen);
+  make_transparent(gear_group);
+  lv_obj_set_size(gear_group,
+                  DISPLAY_HOME_GEAR_COUNT * DISPLAY_HOME_GEAR_WIDTH +
+                      (DISPLAY_HOME_GEAR_COUNT - 1) * DISPLAY_HOME_GEAR_GAP,
+                  DISPLAY_HOME_GEAR_HEIGHT);
+  lv_obj_set_flex_flow(gear_group, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(gear_group, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(gear_group, DISPLAY_HOME_GEAR_GAP, LV_PART_MAIN);
+  lv_obj_align(gear_group, LV_ALIGN_TOP_MID, 0, 350);
+
+  for (uint8_t i = 0; i < DISPLAY_HOME_GEAR_COUNT; ++i) {
+    home->gear[i] = lv_obj_create(gear_group);
+    lv_obj_remove_flag(home->gear[i], LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(home->gear[i], DISPLAY_HOME_GEAR_WIDTH,
+                    DISPLAY_HOME_GEAR_HEIGHT);
+    lv_obj_set_style_bg_opa(home->gear[i], LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(home->gear[i], 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(home->gear[i], 9, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(home->gear[i], 0, LV_PART_MAIN);
+    set_gear_active(home->gear[i], false);
+  }
 }
 
-void display_home_apply_event(const display_event_t *event) {
-  if (event == NULL || s_view.status == NULL) {
+void display_home_update(display_home_t *home, const display_state_t *state) {
+  if (home == NULL || state == NULL || home->screen == NULL) {
     return;
   }
 
-  switch (event->type) {
-  case DISPLAY_EVENT_ACTION_RESULT:
-    lv_label_set_text(s_view.status,
-                      event->data.action.result == ESP_OK ? "Command sent"
-                                                          : "Command failed");
-    break;
-  case DISPLAY_EVENT_FAULT:
-    lv_label_set_text_fmt(s_view.status, "Fault: %s",
-                          esp_err_to_name(event->data.fault.code));
-    break;
-  default:
-    break;
-  }
-}
-
-void display_home_update(const display_ui_model_t *model) {
-  if (model == NULL || s_view.speed == NULL) {
-    return;
-  }
-
-  if (model->has_speed) {
-    lv_label_set_text_fmt(s_view.speed, "%.1f km/h", (double)model->speed_kph);
-  }
-  if (model->has_power) {
-    lv_label_set_text_fmt(s_view.power.value, "%d", model->power_w);
-  }
-  if (model->has_battery_percent) {
-    lv_label_set_text_fmt(s_view.battery.value, "%u", model->battery_percent);
-  }
-  if (model->has_battery_voltage) {
-    lv_label_set_text_fmt(s_view.battery.detail, "%.1f V",
-                          (double)model->battery_voltage_v);
-  }
-  if (model->has_gear) {
-    lv_label_set_text_fmt(s_view.gear.value, "%u", model->gear);
-    lv_label_set_text(s_view.gear.detail,
-                      model->walk_active ? "walk active" : "gear");
-  }
-  if (model->has_ride_mode) {
-    if (model->has_support_mode) {
-      lv_label_set_text(s_view.mode.value,
-                        support_mode_name(model->support_mode));
-      lv_label_set_text(s_view.mode.detail, ride_mode_name(model->ride_mode));
-    } else {
-      lv_label_set_text(s_view.mode.value, ride_mode_name(model->ride_mode));
-      lv_label_set_text(s_view.mode.detail, "ride mode");
-    }
-  }
-  if (model->has_motor_temp && model->has_controller_temp) {
-    lv_label_set_text_fmt(s_view.status, "Motor %d C  Controller %d C",
-                          model->motor_temp_c, model->controller_temp_c);
-  } else if (model->has_motor_temp) {
-    lv_label_set_text_fmt(s_view.status, "Motor %d C", model->motor_temp_c);
-  } else if (model->has_controller_temp) {
-    lv_label_set_text_fmt(s_view.status, "Controller %d C",
-                          model->controller_temp_c);
-  }
+  update_speed(home, state);
+  update_battery_voltage(home, state);
+  update_gear(home, state);
 }

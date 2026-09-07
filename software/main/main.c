@@ -16,7 +16,7 @@
 
 #include "boot/boot.h"
 #include "buttons.h"
-#include "display_event_adapter.h"
+#include "display_adapter.h"
 #include "driver/i2c_master.h"
 #include "esc/esc.h"
 #include "power.h"
@@ -100,7 +100,7 @@ static void peak_app_task(void *arg) {
 
   boot_mode_t boot_mode = boot(handle_boot_mountain_mode);
   ESP_ERROR_CHECK(display_start());
-  ESP_ERROR_CHECK(display_event_adapter_start());
+  ESP_ERROR_CHECK(display_adapter_start());
 
   esp_err_t esc_ret = esc_init();
   if (esc_ret != ESP_OK) {
