@@ -80,6 +80,13 @@ static void handle_boot_mountain_mode(void) {
   esp_err_t ret = esc_set_ride_mode(ESC_RIDE_MODE_MOUNTAIN);
   if (ret != ESP_OK) {
     ESP_LOGW(TAG, "failed to enable Mountain mode: %s", esp_err_to_name(ret));
+    return;
+  }
+
+  ret = display_blink_backlight();
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "failed to blink for Mountain mode: %s",
+             esp_err_to_name(ret));
   }
 }
 

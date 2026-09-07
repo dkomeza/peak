@@ -1,6 +1,7 @@
 #include "display/display.h"
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
 #include "freertos/semphr.h"
@@ -14,11 +15,13 @@
 #define DISPLAY_INIT_TIMEOUT_MS 5000
 #define DISPLAY_SLEEP_TIMEOUT_MS 200
 #define DISPLAY_MAX_WAIT_MS 20
+#define DISPLAY_BACKLIGHT_BLINK_OFF_MS 500
 
 typedef struct {
   portMUX_TYPE lock;
   display_state_t latest_state;
   bool state_pending;
+  bool blink_pending;
   bool sleep_pending;
   StaticSemaphore_t init_done_storage;
   SemaphoreHandle_t init_done;
@@ -33,6 +36,11 @@ typedef struct {
   bool ready;
 } display_runtime_t;
 
+typedef struct {
+  bool backlight_blink_active;
+  int64_t backlight_restore_at_us;
+} display_effects_t;
+
 static const char *TAG = "display";
 static display_runtime_t s_runtime = {
     .lock = portMUX_INITIALIZER_UNLOCKED,
@@ -44,15 +52,19 @@ static TickType_t wait_ticks(uint32_t delay_ms) {
   return pdMS_TO_TICKS(bounded_delay_ms);
 }
 
-static bool process_pending_work(display_home_t *home) {
+static bool process_pending_work(display_home_t *home,
+                                 display_effects_t *effects) {
   display_state_t state;
   bool state_pending;
+  bool blink_pending;
   bool sleep_pending;
 
   portENTER_CRITICAL(&s_runtime.lock);
   state = s_runtime.latest_state;
   state_pending = s_runtime.state_pending;
   s_runtime.state_pending = false;
+  blink_pending = s_runtime.blink_pending;
+  s_runtime.blink_pending = false;
   sleep_pending = s_runtime.sleep_pending;
   s_runtime.sleep_pending = false;
   portEXIT_CRITICAL(&s_runtime.lock);
@@ -65,12 +77,33 @@ static bool process_pending_work(display_home_t *home) {
   if (state_pending) {
     display_home_update(home, &state);
   }
+
+  if (blink_pending) {
+    esp_err_t ret = backlight_set_enabled(false);
+    if (ret != ESP_OK) {
+      ESP_LOGW(TAG, "Failed to blink backlight off: %s", esp_err_to_name(ret));
+    } else {
+      effects->backlight_blink_active = true;
+      effects->backlight_restore_at_us =
+          esp_timer_get_time() + DISPLAY_BACKLIGHT_BLINK_OFF_MS * 1000LL;
+    }
+  }
+
+  if (effects->backlight_blink_active &&
+      esp_timer_get_time() >= effects->backlight_restore_at_us) {
+    esp_err_t ret = backlight_set_enabled(true);
+    if (ret != ESP_OK) {
+      ESP_LOGW(TAG, "Failed to blink backlight on: %s", esp_err_to_name(ret));
+    }
+    effects->backlight_blink_active = false;
+  }
   return false;
 }
 
 static void display_ui_task(void *arg) {
   (void)arg;
   display_home_t home = {0};
+  display_effects_t effects = {0};
   s_runtime.init_result = display_port_init();
   if (s_runtime.init_result == ESP_OK) {
     display_home_create(&home);
@@ -88,7 +121,7 @@ static void display_ui_task(void *arg) {
     xSemaphoreGive(s_runtime.init_done);
 
     for (;;) {
-      if (process_pending_work(&home)) {
+      if (process_pending_work(&home, &effects)) {
         vTaskDelete(NULL);
         return;
       }
@@ -149,6 +182,21 @@ esp_err_t display_update(const display_state_t *state) {
   }
   s_runtime.latest_state = *state;
   s_runtime.state_pending = true;
+  task = s_runtime.task;
+  portEXIT_CRITICAL(&s_runtime.lock);
+
+  xTaskNotifyGive(task);
+  return ESP_OK;
+}
+
+esp_err_t display_blink_backlight(void) {
+  TaskHandle_t task;
+  portENTER_CRITICAL(&s_runtime.lock);
+  if (!s_runtime.ready) {
+    portEXIT_CRITICAL(&s_runtime.lock);
+    return ESP_ERR_INVALID_STATE;
+  }
+  s_runtime.blink_pending = true;
   task = s_runtime.task;
   portEXIT_CRITICAL(&s_runtime.lock);
 

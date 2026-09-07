@@ -31,6 +31,8 @@ typedef struct {
 
 esp_err_t display_start(void);
 esp_err_t display_update(const display_state_t *state);
+/** Request one brief backlight-off/backlight-on blink. */
+esp_err_t display_blink_backlight(void);
 esp_err_t display_sleep(void);
 
 #endif
