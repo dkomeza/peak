@@ -156,6 +156,18 @@ static int nus_rx_access(uint16_t conn_handle, uint16_t attr_handle,
   return enqueue_nus_rx(conn_handle, ctxt);
 }
 
+static int nus_tx_access(uint16_t conn_handle, uint16_t attr_handle,
+                         struct ble_gatt_access_ctxt *ctxt, void *arg) {
+  (void)conn_handle;
+  (void)attr_handle;
+  (void)ctxt;
+  (void)arg;
+
+  // NimBLE requires an access callback for every characteristic definition,
+  // even though this notify-only value is never client-readable or writable.
+  return BLE_ATT_ERR_READ_NOT_PERMITTED;
+}
+
 static int ota_control_access(uint16_t conn_handle, uint16_t attr_handle,
                               struct ble_gatt_access_ctxt *ctxt, void *arg) {
   (void)attr_handle;
@@ -203,6 +215,7 @@ static const struct ble_gatt_chr_def s_nus_characteristics[] = {
     },
     {
         .uuid = &s_nus_tx_uuid.u,
+        .access_cb = nus_tx_access,
         .flags = BLE_GATT_CHR_F_NOTIFY,
         .val_handle = &peak_ble_nus_tx_val_handle,
     },
