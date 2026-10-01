@@ -18,6 +18,8 @@ typedef struct {
   lv_obj_t *support_mode;
   lv_obj_t *speed;
   lv_obj_t *battery_voltage;
+  lv_obj_t *motor_temp;
+  lv_obj_t *controller_temp;
   lv_obj_t *gear[DISPLAY_HOME_GEAR_COUNT];
 
   bool support_mode_valid;
@@ -26,6 +28,10 @@ typedef struct {
   int32_t speed_display_kph;
   bool battery_voltage_valid;
   int32_t battery_voltage_tenths;
+  bool motor_temp_valid;
+  int8_t motor_temp_display_c;
+  bool controller_temp_valid;
+  int8_t controller_temp_display_c;
   bool gear_valid;
   uint8_t gear_display;
 } display_home_t;

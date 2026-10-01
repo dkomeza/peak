@@ -9,6 +9,8 @@ enum {
   DISPLAY_STATE_BATTERY_VOLTAGE = 1U << 1,
   DISPLAY_STATE_GEAR = 1U << 2,
   DISPLAY_STATE_SUPPORT_MODE = 1U << 3,
+  DISPLAY_STATE_MOTOR_TEMP = 1U << 4,
+  DISPLAY_STATE_CONTROLLER_TEMP = 1U << 5,
 };
 
 typedef enum {
@@ -27,6 +29,8 @@ typedef struct {
   float battery_voltage_v;
   uint8_t gear;
   display_support_mode_t support_mode;
+  int8_t motor_temp_c;
+  int8_t controller_temp_c;
 } display_state_t;
 
 esp_err_t display_start(void);

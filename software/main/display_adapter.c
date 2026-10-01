@@ -28,6 +28,14 @@ static void on_esc_update(const esc_state_t *state, void *user_ctx) {
     display_state.valid_fields |= DISPLAY_STATE_BATTERY_VOLTAGE;
     display_state.battery_voltage_v = state->battery_voltage_v;
   }
+  if ((state->valid_fields & ESC_STATE_MOTOR_TEMP) != 0) {
+    display_state.valid_fields |= DISPLAY_STATE_MOTOR_TEMP;
+    display_state.motor_temp_c = state->motor_temp_c;
+  }
+  if ((state->valid_fields & ESC_STATE_CONTROLLER_TEMP) != 0) {
+    display_state.valid_fields |= DISPLAY_STATE_CONTROLLER_TEMP;
+    display_state.controller_temp_c = state->controller_temp_c;
+  }
   if ((state->valid_fields & ESC_STATE_GEAR) != 0) {
     display_state.valid_fields |= DISPLAY_STATE_GEAR;
     display_state.gear = state->gear;

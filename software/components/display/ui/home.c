@@ -54,6 +54,16 @@ static bool voltage_from_state(const display_state_t *state,
   return true;
 }
 
+static bool temperature_from_state(const display_state_t *state,
+                                   uint32_t valid_field, int8_t temperature_c) {
+  if ((state->valid_fields & valid_field) == 0 || temperature_c < -40 ||
+      temperature_c > 150) {
+    return false;
+  }
+
+  return true;
+}
+
 static bool gear_from_state(const display_state_t *state, uint8_t *gear) {
   if ((state->valid_fields & DISPLAY_STATE_GEAR) == 0 || state->gear == 0 ||
       state->gear > DISPLAY_HOME_GEAR_COUNT) {
@@ -135,6 +145,40 @@ static void update_battery_voltage(display_home_t *home,
   home->battery_voltage_valid = valid;
 }
 
+static void update_temperature(lv_obj_t *label, const char *name,
+                               bool *display_valid, int8_t *display_c,
+                               bool valid, int8_t temperature_c) {
+  if (*display_valid == valid && (!valid || *display_c == temperature_c)) {
+    return;
+  }
+
+  char text[24];
+  if (valid) {
+    snprintf(text, sizeof(text), "%s %d\xC2\xB0" "C", name, temperature_c);
+    *display_c = temperature_c;
+  } else {
+    snprintf(text, sizeof(text), "%s --\xC2\xB0" "C", name);
+  }
+  lv_label_set_text(label, text);
+  *display_valid = valid;
+}
+
+static void update_temperatures(display_home_t *home,
+                                const display_state_t *state) {
+  bool motor_valid = temperature_from_state(
+      state, DISPLAY_STATE_MOTOR_TEMP, state->motor_temp_c);
+  update_temperature(home->motor_temp, "MOTOR", &home->motor_temp_valid,
+                     &home->motor_temp_display_c, motor_valid,
+                     state->motor_temp_c);
+
+  bool controller_valid = temperature_from_state(
+      state, DISPLAY_STATE_CONTROLLER_TEMP, state->controller_temp_c);
+  update_temperature(home->controller_temp, "CONTROLLER",
+                     &home->controller_temp_valid,
+                     &home->controller_temp_display_c, controller_valid,
+                     state->controller_temp_c);
+}
+
 static void update_gear(display_home_t *home, const display_state_t *state) {
   uint8_t gear;
   bool valid = gear_from_state(state, &gear);
@@ -200,6 +244,18 @@ void display_home_create(display_home_t *home) {
                               LV_PART_MAIN);
   lv_obj_align(home->battery_voltage, LV_ALIGN_CENTER, 0, 0);
 
+  home->motor_temp = lv_label_create(home->screen);
+  lv_label_set_text(home->motor_temp, "MOTOR --\xC2\xB0" "C");
+  lv_obj_set_style_text_color(home->motor_temp, lv_color_hex(COLOR_TEXT),
+                              LV_PART_MAIN);
+  lv_obj_align(home->motor_temp, LV_ALIGN_TOP_LEFT, 28, 28);
+
+  home->controller_temp = lv_label_create(home->screen);
+  lv_label_set_text(home->controller_temp, "CONTROLLER --\xC2\xB0" "C");
+  lv_obj_set_style_text_color(home->controller_temp, lv_color_hex(COLOR_TEXT),
+                              LV_PART_MAIN);
+  lv_obj_align(home->controller_temp, LV_ALIGN_TOP_LEFT, 28, 52);
+
   home->support_mode = lv_label_create(home->screen);
   lv_label_set_text(home->support_mode, "--");
   lv_obj_set_style_text_color(home->support_mode,
@@ -262,5 +318,6 @@ void display_home_update(display_home_t *home, const display_state_t *state) {
   update_support_mode(home, state);
   update_speed(home, state);
   update_battery_voltage(home, state);
+  update_temperatures(home, state);
   update_gear(home, state);
 }
