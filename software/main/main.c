@@ -77,6 +77,38 @@ static void handle_gear_down(void) {
   }
 }
 
+static void handle_support_mode_toggle(void) {
+  esc_state_t state;
+  esc_get_state(&state);
+  if ((state.valid_fields & ESC_STATE_SUPPORT_MODE) == 0) {
+    ESP_LOGW(TAG, "cannot switch support mode before ESC state is available");
+    return;
+  }
+
+  esc_support_mode_t next_mode;
+  switch (state.support_mode) {
+  case ESC_SUPPORT_MODE_PAS:
+    next_mode = ESC_SUPPORT_MODE_TORQUE;
+    break;
+  case ESC_SUPPORT_MODE_TORQUE:
+    next_mode = ESC_SUPPORT_MODE_PAS;
+    break;
+  default:
+    ESP_LOGW(TAG, "cannot switch unknown support mode: %d",
+             state.support_mode);
+    return;
+  }
+
+  esp_err_t ret = esc_set_support_mode(next_mode);
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "failed to switch support mode: %s", esp_err_to_name(ret));
+    return;
+  }
+
+  ESP_LOGI(TAG, "switching support mode to %s",
+           next_mode == ESC_SUPPORT_MODE_TORQUE ? "TORQUE" : "PAS");
+}
+
 static void handle_boot_mountain_mode(void) {
   s_mountain_requested = true;
   if (!s_esc_ready) {
@@ -139,6 +171,7 @@ static void peak_app_task(void *arg) {
   buttons_on(BTN_POWER, BTN_EVENT_LONG_PRESS_END,
              handle_button_power_long_stop);
   buttons_on(BTN_UP, BTN_EVENT_CLICK, handle_gear_up);
+  buttons_on(BTN_UP, BTN_EVENT_LONG_PRESS_START, handle_support_mode_toggle);
   buttons_on(BTN_DOWN, BTN_EVENT_CLICK, handle_gear_down);
 
   peak_ble_config_t ble_config = {
