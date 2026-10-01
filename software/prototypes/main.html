@@ -1,0 +1,822 @@
+<html lang="en" style="--accent: #10b981; --accent-2: #059669; --glow: rgba(16,185,129,.52);">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Peak — gauge and gear-bar prototype</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #0b0d0f;
+      --panel: #15181b;
+      --screen: #07090b;
+      --screen-card: rgba(255, 255, 255, 0.055);
+      --screen-line: rgba(255, 255, 255, 0.11);
+      --ink: #f4f4f5;
+      --muted: #909198;
+      --dim: #44474e;
+      --accent: #f97316;
+      --accent-2: #ea580c;
+      --glow: rgba(249, 115, 22, 0.52);
+      --good: #18784b;
+      --display: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+      --body: "Avenir Next", "Segoe UI", sans-serif;
+      --utility: "SFMono-Regular", "Roboto Mono", "DejaVu Sans Mono", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      background:
+        radial-gradient(circle at 24% 30%, rgba(249, 115, 22, 0.06), transparent 30rem),
+        var(--page);
+      color: var(--ink);
+      font-family: var(--body);
+    }
+
+    .workspace {
+      width: min(1020px, calc(100% - 40px));
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 30px 0;
+      display: grid;
+      grid-template-columns: 502px minmax(280px, 380px);
+      align-items: center;
+      justify-content: center;
+      gap: clamp(38px, 7vw, 92px);
+    }
+
+    .device {
+      width: 502px;
+      max-width: 100%;
+      padding: 10px;
+      border: 1px solid #30343a;
+      border-radius: 34px;
+      background: linear-gradient(145deg, #24282c, #111315 52%, #08090a);
+      box-shadow: 0 34px 70px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .screen {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      overflow: hidden;
+      border-radius: 24px;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        var(--screen);
+      background-size: 6.25cqw 6.25cqw;
+      box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.85);
+      container-type: inline-size;
+      user-select: none;
+    }
+
+    .screen::before {
+      content: "";
+      position: absolute;
+      z-index: 0;
+      top: 14cqw;
+      left: 50%;
+      width: 74cqw;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.16;
+      filter: blur(24cqw);
+      transform: translateX(-50%);
+      transition: background 300ms ease;
+    }
+
+    .screen-ui {
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      padding: 4cqw 5cqw;
+      display: grid;
+      grid-template-rows: 9cqw 58cqw 7cqw 26cqw 15cqw;
+      gap: 2.5cqw;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .status-pill {
+      height: 9cqw;
+      padding: 0 3.1cqw;
+      border: 1px solid var(--screen-line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.065);
+      backdrop-filter: blur(14px);
+      display: flex;
+      align-items: center;
+      gap: 2.1cqw;
+      box-shadow: 0 1.5cqw 3cqw rgba(0, 0, 0, 0.28);
+    }
+
+    .bluetooth-pill {
+      width: 9cqw;
+      padding: 0;
+      justify-content: center;
+    }
+
+    .bluetooth-icon {
+      width: 4.1cqw;
+      height: 4.1cqw;
+      color: #60a5fa;
+      flex: 0 0 auto;
+    }
+
+    .battery-indicator {
+      position: relative;
+      width: 17cqw;
+      height: 7cqw;
+      margin-right: 1.2cqw;
+      border: 0.45cqw solid rgba(244, 244, 245, 0.72);
+      border-radius: 1.8cqw;
+      background: rgba(255, 255, 255, 0.04);
+      display: grid;
+      place-items: center;
+      isolation: isolate;
+      box-shadow: 0 1cqw 2cqw rgba(0, 0, 0, 0.28);
+    }
+
+    .battery-indicator::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -1.15cqw;
+      width: 0.7cqw;
+      height: 2.7cqw;
+      border-radius: 0 0.5cqw 0.5cqw 0;
+      background: rgba(244, 244, 245, 0.72);
+      transform: translateY(-50%);
+    }
+
+    .battery-fill {
+      position: absolute;
+      z-index: 0;
+      top: 0.55cqw;
+      bottom: 0.55cqw;
+      left: 0.55cqw;
+      width: calc(84% - 0.8cqw);
+      border-radius: 1.1cqw;
+      background: var(--good);
+    }
+
+    .battery-percent {
+      position: relative;
+      z-index: 1;
+      color: #ffffff;
+      font: 900 3.05cqw/1 var(--utility);
+      letter-spacing: -0.08em;
+      text-shadow: 0 0.2cqw 0.4cqw rgba(0, 0, 0, 0.42);
+    }
+
+    .gauge {
+      position: relative;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .gauge-svg {
+      position: absolute;
+      top: -10cqw;
+      left: 5cqw;
+      width: 80cqw;
+      height: 80cqw;
+      overflow: visible;
+    }
+
+    .gauge-rotor {
+      transform: rotate(150deg);
+      transform-origin: 200px 200px;
+    }
+
+    .gauge-track,
+    .gauge-fill {
+      fill: none;
+      stroke-width: 16;
+      stroke-linecap: round;
+    }
+
+    .gauge-track {
+      stroke: #252c38;
+      stroke-dasharray: 66.7 33.3;
+    }
+
+    .gauge-fill {
+      stroke: url(#powerGradient);
+      stroke-dasharray: 53.7 46.3;
+      filter: url(#arcGlow);
+      transition: stroke-dasharray 350ms ease;
+    }
+
+    .gauge-ticks {
+      fill: none;
+      stroke: #303641;
+      stroke-width: 2;
+      stroke-dasharray: 1.2 2.3;
+      opacity: 0.68;
+    }
+
+    .telemetry {
+      position: relative;
+      z-index: 1;
+      margin-top: 7.5cqw;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .drive-label {
+      margin-bottom: 4cqw;
+      color: var(--accent);
+      font: 900 3.25cqw/1 var(--utility);
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      transition: color 300ms ease;
+    }
+
+    .speed-row {
+      position: relative;
+      display: inline-block;
+    }
+
+    .speed {
+      color: transparent;
+      background: linear-gradient(#ffffff, #b7b7bd);
+      background-clip: text;
+      -webkit-background-clip: text;
+      font: 900 26.5cqw/0.76 var(--display);
+      letter-spacing: -0.08em;
+      font-variant-numeric: tabular-nums;
+      filter: drop-shadow(0 1.5cqw 2.5cqw rgba(0, 0, 0, 0.5));
+    }
+
+    .speed-unit {
+      position: absolute;
+      top: 3cqw;
+      left: calc(100% + 2cqw);
+      margin: 0;
+      color: #6d6e75;
+      font: 900 4.25cqw/1 var(--display);
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+    }
+
+    .power-pill {
+      min-width: 41cqw;
+      height: 11cqw;
+      margin-top: 5.5cqw;
+      padding: 0 4cqw;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.8cqw;
+    }
+
+    .bolt-icon {
+      width: 5cqw;
+      height: 5cqw;
+      color: var(--accent);
+      transition: color 300ms ease;
+    }
+
+    .power-value {
+      min-width: 13cqw;
+      text-align: right;
+      font: 900 6.1cqw/1 var(--utility);
+      letter-spacing: -0.06em;
+    }
+
+    .power-unit {
+      color: var(--muted);
+      font: 800 2.2cqw/1 var(--utility);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .gear-bars {
+      padding: 0 0.8cqw;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 2.3cqw;
+      align-items: center;
+    }
+
+    .gear-bar {
+      height: 3cqw;
+      border-radius: 0.7cqw;
+      background: #27292e;
+      opacity: 0.46;
+      transform: skewX(-20deg);
+      transition: background 300ms ease, opacity 300ms ease, box-shadow 300ms ease;
+    }
+
+    .gear-bar.active {
+      background: var(--accent);
+      opacity: 1;
+    }
+
+    .gear-bar.current {
+      box-shadow: 0 0 3.6cqw var(--glow);
+    }
+
+    .primary-cards {
+      display: grid;
+      grid-template-columns: 0.94fr 1.18fr;
+      gap: 2.5cqw;
+    }
+
+    .glass-card {
+      min-width: 0;
+      border: 1px solid var(--screen-line);
+      border-radius: 3.2cqw;
+      background: var(--screen-card);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 1.5cqw 3cqw rgba(0, 0, 0, 0.24);
+    }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 1.7cqw;
+      color: var(--muted);
+      font: 800 2.2cqw/1 var(--utility);
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+
+    .card-icon {
+      width: 4cqw;
+      height: 4cqw;
+      color: var(--accent);
+      transition: color 300ms ease;
+    }
+
+    .range-card {
+      position: relative;
+      overflow: hidden;
+      padding: 3.4cqw 3.6cqw;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .range-card::after {
+      content: "";
+      position: absolute;
+      right: -7cqw;
+      bottom: -9cqw;
+      width: 20cqw;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.17;
+      filter: blur(5cqw);
+      transition: background 300ms ease;
+    }
+
+    .range-value {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: baseline;
+      gap: 1.2cqw;
+    }
+
+    .range-value strong {
+      font: 400 11cqw/0.85 var(--display);
+      letter-spacing: -0.06em;
+    }
+
+    .range-value span {
+      color: var(--muted);
+      font: 800 3cqw/1 var(--display);
+    }
+
+    .thermal-card {
+      padding: 3.4cqw 3.6cqw;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 2.8cqw;
+    }
+
+    .thermal-icon {
+      color: #fb923c;
+    }
+
+    .thermal-readings {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3cqw;
+      min-height: 0;
+    }
+
+    .thermal-reading {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+
+    .thermal-reading+.thermal-reading {
+      border-left: 1px solid var(--screen-line);
+      padding-left: 3cqw;
+    }
+
+    .thermal-label {
+      color: var(--muted);
+      font: 800 1.9cqw/1 var(--utility);
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .thermal-value {
+      margin: 1.4cqw 0 1.7cqw;
+      font: 800 7cqw/0.85 var(--display);
+      letter-spacing: -0.035em;
+    }
+
+    .thermal-track {
+      height: 0.9cqw;
+      overflow: hidden;
+      background: #303238;
+    }
+
+    .thermal-track i {
+      display: block;
+      height: 100%;
+      background: #fb923c;
+    }
+
+    .thermal-reading:last-child .thermal-track i {
+      background: #facc15;
+    }
+
+    .trip-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.8cqw;
+    }
+
+    .trip-card {
+      padding: 2cqw 1cqw;
+      border-radius: 2.6cqw;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .trip-icon {
+      width: 3.2cqw;
+      height: 3.2cqw;
+      margin-bottom: 1cqw;
+      color: #666970;
+    }
+
+    .trip-value {
+      font: 900 4.2cqw/1 var(--utility);
+      letter-spacing: -0.05em;
+    }
+
+    .trip-label {
+      margin-top: 1cqw;
+      color: var(--muted);
+      font: 800 1.65cqw/1 var(--utility);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .notes {
+      max-width: 380px;
+    }
+
+    .notes-kicker {
+      margin: 0 0 14px;
+      color: var(--accent);
+      font: 800 11px/1 var(--utility);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      transition: color 300ms ease;
+    }
+
+    .notes h1 {
+      margin: 0;
+      font: 700 clamp(38px, 5vw, 62px)/0.96 var(--display);
+      letter-spacing: -0.04em;
+    }
+
+    .notes>p {
+      max-width: 39ch;
+      margin: 18px 0 0;
+      color: #a3a5aa;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .control-panel {
+      margin-top: 28px;
+      padding-top: 22px;
+      border-top: 1px solid #303338;
+    }
+
+    .control-label {
+      display: block;
+      margin-bottom: 12px;
+      color: #777a81;
+      font: 800 10px/1 var(--utility);
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    .level-buttons {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+
+    .level-button {
+      height: 42px;
+      border: 1px solid #34373d;
+      border-radius: 8px;
+      background: #111316;
+      color: #777a81;
+      font: 900 13px/1 var(--utility);
+      cursor: pointer;
+      transition: border-color 180ms ease, color 180ms ease, background 180ms ease, transform 180ms ease;
+    }
+
+    .level-button:hover {
+      color: var(--ink);
+      border-color: #5a5d65;
+    }
+
+    .level-button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    .level-button.selected {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #101112;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px var(--glow);
+    }
+
+    .control-note {
+      margin-top: 16px;
+      color: #686b71;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 880px) {
+      .workspace {
+        grid-template-columns: minmax(280px, 502px);
+        padding-bottom: 60px;
+      }
+
+      .notes {
+        max-width: 502px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .workspace {
+        width: min(502px, calc(100% - 24px));
+        gap: 32px;
+        padding-top: 12px;
+      }
+
+      .device {
+        width: 100%;
+        padding: 7px;
+        border-radius: 24px;
+      }
+
+      .screen {
+        border-radius: 18px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      *,
+      *::before,
+      *::after {
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="workspace">
+    <section class="device" aria-label="480 by 640 Peak display prototype">
+      <div class="screen" id="screen">
+        <div class="screen-ui" style="/*! display: none; */">
+          <header class="status-bar">
+            <div class="status-pill bluetooth-pill" aria-label="Bluetooth connected">
+              <svg class="bluetooth-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m7 7 10 10-5 5V2l5 5L7 17"></path>
+              </svg>
+            </div>
+            <div class="battery-indicator" aria-label="Battery 84 percent">
+              <i class="battery-fill" aria-hidden="true"></i>
+              <span class="battery-percent">84%</span>
+            </div>
+          </header>
+
+          <section class="gauge" aria-label="Speed and power">
+            <svg class="gauge-svg" viewBox="0 0 400 400" aria-hidden="true">
+              <defs>
+                <linearGradient id="powerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" id="gradientStart" stop-color="#10b981"></stop>
+                  <stop offset="100%" id="gradientEnd" stop-color="#059669"></stop>
+                </linearGradient>
+                <filter id="arcGlow" x="-30%" y="-30%" width="160%" height="160%">
+                  <feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur>
+                  <feMerge>
+                    <feMergeNode in="blur"></feMergeNode>
+                    <feMergeNode in="SourceGraphic"></feMergeNode>
+                  </feMerge>
+                </filter>
+              </defs>
+              <g class="gauge-rotor">
+                <circle class="gauge-track" cx="200" cy="200" r="168" pathLength="100"></circle>
+                <circle class="gauge-fill" id="gaugeFill" cx="200" cy="200" r="168" pathLength="100"
+                  style="stroke-dasharray: 14.1px, 85.9px;"></circle>
+                <circle class="gauge-ticks" cx="200" cy="200" r="144" pathLength="100"></circle>
+              </g>
+            </svg>
+
+            <div class="telemetry">
+              <div class="drive-label">Hybrid</div>
+              <div class="speed-row">
+                <span class="speed">27</span>
+                <span class="speed-unit">km/h</span>
+              </div>
+              <div class="power-pill">
+                <svg class="bolt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"></path>
+                </svg>
+                <strong class="power-value" id="powerValue">180</strong>
+                <span class="power-unit">W</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="gear-bars" id="gearBars" aria-label="Assist gear 1 of 5">
+            <i class="gear-bar active current"></i><i class="gear-bar"></i><i class="gear-bar"></i><i
+              class="gear-bar"></i><i class="gear-bar"></i>
+          </section>
+
+          <section class="primary-cards">
+            <article class="glass-card range-card">
+              <div class="card-title">
+                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"></path>
+                  <circle cx="12" cy="10" r="2"></circle>
+                </svg>
+                <span>Est. range</span>
+              </div>
+              <div class="range-value"><strong id="rangeValue">65</strong><span>km</span></div>
+            </article>
+
+            <article class="glass-card thermal-card">
+              <div class="card-title">
+                <svg class="card-icon thermal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 14.8V5a4 4 0 0 0-8 0v9.8a6 6 0 1 0 8 0Z"></path>
+                  <path d="M10 9v7"></path>
+                </svg>
+                <span>Thermals</span>
+              </div>
+              <div class="thermal-readings">
+                <div class="thermal-reading">
+                  <span class="thermal-label">Motor</span>
+                  <strong class="thermal-value">66°</strong>
+                  <span class="thermal-track"><i style="width:66%"></i></span>
+                </div>
+                <div class="thermal-reading">
+                  <span class="thermal-label">Controller</span>
+                  <strong class="thermal-value">44°</strong>
+                  <span class="thermal-track"><i style="width:49%"></i></span>
+                </div>
+              </div>
+            </article>
+          </section>
+
+          <footer class="trip-cards">
+            <article class="glass-card trip-card">
+              <svg class="trip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12h4l3-8 4 16 3-8h4"></path>
+              </svg>
+              <strong class="trip-value">24.8</strong><span class="trip-label">Dist km</span>
+            </article>
+            <article class="glass-card trip-card">
+              <svg class="trip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="M12 7v5l3 2"></path>
+              </svg>
+              <strong class="trip-value">1:24</strong><span class="trip-label">Time hr</span>
+            </article>
+            <article class="glass-card trip-card">
+              <svg class="trip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m12 3 6 18-6-4-6 4 6-18Z"></path>
+              </svg>
+              <strong class="trip-value">22.4</strong><span class="trip-label">Avg km/h</span>
+            </article>
+          </footer>
+        </div>
+      </div>
+    </section>
+
+    <aside class="notes">
+      <p class="notes-kicker">Main screen / refined direction</p>
+      <h1>Gauge up top.<br>Gear in five steps.</h1>
+      <p>The five bars are exclusively the assist-gear indicator. The power arc stays separate, the compact battery
+        remains glanceable, and thermals use two horizontal readings.</p>
+
+      <div class="control-panel">
+        <span class="control-label">Preview assist gear</span>
+        <div class="level-buttons" role="group" aria-label="Preview assist gear">
+          <button class="level-button selected" type="button" data-level="1">1</button>
+          <button class="level-button" type="button" data-level="2">2</button>
+          <button class="level-button" type="button" data-level="3">3</button>
+          <button class="level-button" type="button" data-level="4">4</button>
+          <button class="level-button" type="button" data-level="5">5</button>
+        </div>
+        <p class="control-note">These controls are outside the device only for prototyping. The production screen
+          remains non-touch.</p>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const levels = {
+      1: {primary: "#10b981", secondary: "#059669", glow: "rgba(16,185,129,.52)", power: 180, range: 65},
+      2: {primary: "#3b82f6", secondary: "#2563eb", glow: "rgba(59,130,246,.52)", power: 320, range: 55},
+      3: {primary: "#eab308", secondary: "#ca8a04", glow: "rgba(234,179,8,.52)", power: 450, range: 47},
+      4: {primary: "#f97316", secondary: "#ea580c", glow: "rgba(249,115,22,.52)", power: 684, range: 40},
+      5: {primary: "#ef4444", secondary: "#dc2626", glow: "rgba(239,68,68,.52)", power: 820, range: 32}
+    };
+
+    const root = document.documentElement;
+    const bars = [...document.querySelectorAll(".gear-bar")];
+    const buttons = [...document.querySelectorAll(".level-button")];
+
+    function setLevel(level) {
+      const data = levels[level];
+      root.style.setProperty("--accent", data.primary);
+      root.style.setProperty("--accent-2", data.secondary);
+      root.style.setProperty("--glow", data.glow);
+      document.getElementById("gradientStart").setAttribute("stop-color", data.primary);
+      document.getElementById("gradientEnd").setAttribute("stop-color", data.secondary);
+      document.getElementById("powerValue").textContent = data.power;
+      document.getElementById("rangeValue").textContent = data.range;
+      document.getElementById("gearBars").setAttribute("aria-label", `Assist gear ${level} of 5`);
+
+      const fill = 66.7 * (data.power / 850);
+      document.getElementById("gaugeFill").style.strokeDasharray = `${fill.toFixed(1)} ${(100 - fill).toFixed(1)}`;
+
+      bars.forEach((bar, index) => {
+        bar.classList.toggle("active", index < level);
+        bar.classList.toggle("current", index === level - 1);
+      });
+
+      buttons.forEach((button) => {
+        button.classList.toggle("selected", Number(button.dataset.level) === level);
+      });
+    }
+
+    buttons.forEach((button) => button.addEventListener("click", () => setLevel(Number(button.dataset.level))));
+    setLevel(4);
+  </script>
+
+
+</body>
+
+</html>
