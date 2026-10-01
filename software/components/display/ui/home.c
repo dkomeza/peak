@@ -11,12 +11,17 @@
 #define DISPLAY_HOME_GEAR_HEIGHT 24
 #define DISPLAY_HOME_GEAR_GAP 12
 #define DISPLAY_HOME_SPEED_SCALE 512
+#define DISPLAY_HOME_TEMP_PULSE_DURATION_MS 600
 
 #define COLOR_BACKGROUND 0x000000
 #define COLOR_TEXT 0xF4F4F5
 #define COLOR_MUTED 0x8E8E93
 #define COLOR_GEAR_INACTIVE 0x27292E
 #define COLOR_GEAR_ACTIVE 0x10B981
+#define COLOR_TEMP_COLD 0x7DD3FC
+#define COLOR_TEMP_NORMAL 0x22C55E
+#define COLOR_TEMP_WARM 0xF97316
+#define COLOR_TEMP_HOT 0xEF4444
 
 static void make_transparent(lv_obj_t *obj) {
   lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
@@ -56,8 +61,7 @@ static bool voltage_from_state(const display_state_t *state,
 
 static bool temperature_from_state(const display_state_t *state,
                                    uint32_t valid_field, int8_t temperature_c) {
-  if ((state->valid_fields & valid_field) == 0 || temperature_c < -40 ||
-      temperature_c > 150) {
+  if ((state->valid_fields & valid_field) == 0 || temperature_c < -40) {
     return false;
   }
 
@@ -145,21 +149,64 @@ static void update_battery_voltage(display_home_t *home,
   home->battery_voltage_valid = valid;
 }
 
-static void update_temperature(lv_obj_t *label, const char *name,
-                               bool *display_valid, int8_t *display_c,
-                               bool valid, int8_t temperature_c) {
+static void set_temperature_opacity(void *target, int32_t opacity) {
+  lv_obj_set_style_text_opa(target, (lv_opa_t)opacity, LV_PART_MAIN);
+}
+
+static void apply_temperature_style(lv_obj_t *label, bool valid,
+                                    int8_t temperature_c) {
+  lv_anim_delete(label, set_temperature_opacity);
+  lv_obj_set_style_text_opa(label, LV_OPA_COVER, LV_PART_MAIN);
+
+  if (!valid) {
+    lv_obj_set_style_text_color(label, lv_color_hex(COLOR_MUTED),
+                                LV_PART_MAIN);
+    return;
+  }
+
+  uint32_t color = COLOR_TEMP_COLD;
+  if (temperature_c >= 100) {
+    color = COLOR_TEMP_HOT;
+  } else if (temperature_c >= 90) {
+    color = COLOR_TEMP_HOT;
+  } else if (temperature_c >= 80) {
+    color = COLOR_TEMP_WARM;
+  } else if (temperature_c >= 20) {
+    color = COLOR_TEMP_NORMAL;
+  }
+  lv_obj_set_style_text_color(label, lv_color_hex(color), LV_PART_MAIN);
+
+  if (temperature_c < 100) {
+    return;
+  }
+
+  lv_anim_t animation;
+  lv_anim_init(&animation);
+  lv_anim_set_var(&animation, label);
+  lv_anim_set_exec_cb(&animation, set_temperature_opacity);
+  lv_anim_set_values(&animation, LV_OPA_40, LV_OPA_COVER);
+  lv_anim_set_duration(&animation, DISPLAY_HOME_TEMP_PULSE_DURATION_MS);
+  lv_anim_set_reverse_duration(&animation, DISPLAY_HOME_TEMP_PULSE_DURATION_MS);
+  lv_anim_set_repeat_count(&animation, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_start(&animation);
+}
+
+static void update_temperature(lv_obj_t *label, bool *display_valid,
+                               int8_t *display_c, bool valid,
+                               int8_t temperature_c) {
   if (*display_valid == valid && (!valid || *display_c == temperature_c)) {
     return;
   }
 
-  char text[24];
+  char text[8];
   if (valid) {
-    snprintf(text, sizeof(text), "%s %d\xC2\xB0" "C", name, temperature_c);
+    snprintf(text, sizeof(text), "%d\xC2\xB0" "C", temperature_c);
     *display_c = temperature_c;
   } else {
-    snprintf(text, sizeof(text), "%s --\xC2\xB0" "C", name);
+    snprintf(text, sizeof(text), "--\xC2\xB0" "C");
   }
   lv_label_set_text(label, text);
+  apply_temperature_style(label, valid, temperature_c);
   *display_valid = valid;
 }
 
@@ -167,14 +214,13 @@ static void update_temperatures(display_home_t *home,
                                 const display_state_t *state) {
   bool motor_valid = temperature_from_state(
       state, DISPLAY_STATE_MOTOR_TEMP, state->motor_temp_c);
-  update_temperature(home->motor_temp, "MOTOR", &home->motor_temp_valid,
+  update_temperature(home->motor_temp, &home->motor_temp_valid,
                      &home->motor_temp_display_c, motor_valid,
                      state->motor_temp_c);
 
   bool controller_valid = temperature_from_state(
       state, DISPLAY_STATE_CONTROLLER_TEMP, state->controller_temp_c);
-  update_temperature(home->controller_temp, "CONTROLLER",
-                     &home->controller_temp_valid,
+  update_temperature(home->controller_temp, &home->controller_temp_valid,
                      &home->controller_temp_display_c, controller_valid,
                      state->controller_temp_c);
 }
@@ -244,18 +290,6 @@ void display_home_create(display_home_t *home) {
                               LV_PART_MAIN);
   lv_obj_align(home->battery_voltage, LV_ALIGN_CENTER, 0, 0);
 
-  home->motor_temp = lv_label_create(home->screen);
-  lv_label_set_text(home->motor_temp, "MOTOR --\xC2\xB0" "C");
-  lv_obj_set_style_text_color(home->motor_temp, lv_color_hex(COLOR_TEXT),
-                              LV_PART_MAIN);
-  lv_obj_align(home->motor_temp, LV_ALIGN_TOP_LEFT, 28, 28);
-
-  home->controller_temp = lv_label_create(home->screen);
-  lv_label_set_text(home->controller_temp, "CONTROLLER --\xC2\xB0" "C");
-  lv_obj_set_style_text_color(home->controller_temp, lv_color_hex(COLOR_TEXT),
-                              LV_PART_MAIN);
-  lv_obj_align(home->controller_temp, LV_ALIGN_TOP_LEFT, 28, 52);
-
   home->support_mode = lv_label_create(home->screen);
   lv_label_set_text(home->support_mode, "--");
   lv_obj_set_style_text_color(home->support_mode,
@@ -308,6 +342,38 @@ void display_home_create(display_home_t *home) {
     lv_obj_set_style_pad_all(home->gear[i], 0, LV_PART_MAIN);
     set_gear_active(home->gear[i], false);
   }
+
+  lv_obj_t *motor_temp_label = lv_label_create(home->screen);
+  lv_label_set_text(motor_temp_label, "MOTOR");
+  lv_obj_set_style_text_color(motor_temp_label, lv_color_hex(COLOR_MUTED),
+                              LV_PART_MAIN);
+  lv_obj_align(motor_temp_label, LV_ALIGN_TOP_MID, -120, 386);
+
+  home->motor_temp = lv_label_create(home->screen);
+  lv_label_set_text(home->motor_temp, "--\xC2\xB0" "C");
+  lv_obj_set_style_text_color(home->motor_temp, lv_color_hex(COLOR_MUTED),
+                              LV_PART_MAIN);
+#if LV_FONT_MONTSERRAT_48
+  lv_obj_set_style_text_font(home->motor_temp, &lv_font_montserrat_48,
+                             LV_PART_MAIN);
+#endif
+  lv_obj_align(home->motor_temp, LV_ALIGN_TOP_MID, -120, 404);
+
+  lv_obj_t *controller_temp_label = lv_label_create(home->screen);
+  lv_label_set_text(controller_temp_label, "CONTROLLER");
+  lv_obj_set_style_text_color(controller_temp_label,
+                              lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+  lv_obj_align(controller_temp_label, LV_ALIGN_TOP_MID, 120, 386);
+
+  home->controller_temp = lv_label_create(home->screen);
+  lv_label_set_text(home->controller_temp, "--\xC2\xB0" "C");
+  lv_obj_set_style_text_color(home->controller_temp, lv_color_hex(COLOR_MUTED),
+                              LV_PART_MAIN);
+#if LV_FONT_MONTSERRAT_48
+  lv_obj_set_style_text_font(home->controller_temp, &lv_font_montserrat_48,
+                             LV_PART_MAIN);
+#endif
+  lv_obj_align(home->controller_temp, LV_ALIGN_TOP_MID, 120, 404);
 }
 
 void display_home_update(display_home_t *home, const display_state_t *state) {
