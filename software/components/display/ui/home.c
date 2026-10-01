@@ -10,6 +10,7 @@
 #define DISPLAY_HOME_GEAR_WIDTH 58
 #define DISPLAY_HOME_GEAR_HEIGHT 24
 #define DISPLAY_HOME_GEAR_GAP 12
+#define DISPLAY_HOME_SPEED_SCALE 512
 
 #define COLOR_BACKGROUND 0x000000
 #define COLOR_TEXT 0xF4F4F5
@@ -208,7 +209,7 @@ void display_home_create(display_home_t *home) {
 
   lv_obj_t *speed_group = lv_obj_create(home->screen);
   make_transparent(speed_group);
-  lv_obj_set_size(speed_group, 240, 116);
+  lv_obj_set_size(speed_group, 360, 132);
   lv_obj_align(speed_group, LV_ALIGN_TOP_MID, 0, 196);
 
   home->speed = lv_label_create(speed_group);
@@ -218,13 +219,15 @@ void display_home_create(display_home_t *home) {
 #if LV_FONT_MONTSERRAT_48
   lv_obj_set_style_text_font(home->speed, &lv_font_montserrat_48, LV_PART_MAIN);
 #endif
+  lv_obj_set_style_transform_scale(home->speed, DISPLAY_HOME_SPEED_SCALE,
+                                   LV_PART_MAIN);
   lv_obj_align(home->speed, LV_ALIGN_TOP_MID, 0, 0);
 
   lv_obj_t *speed_unit = lv_label_create(speed_group);
   lv_label_set_text(speed_unit, "km/h");
   lv_obj_set_style_text_color(speed_unit, lv_color_hex(COLOR_MUTED),
                               LV_PART_MAIN);
-  lv_obj_align(speed_unit, LV_ALIGN_TOP_MID, 0, 62);
+  lv_obj_align(speed_unit, LV_ALIGN_TOP_MID, 0, 88);
 
   lv_obj_t *gear_group = lv_obj_create(home->screen);
   make_transparent(gear_group);
