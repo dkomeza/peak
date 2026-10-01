@@ -9,5 +9,6 @@ esp_err_t esc_cycleiq_gear_down(void);
 esp_err_t esc_cycleiq_set_support_mode(esc_support_mode_t mode);
 esp_err_t esc_cycleiq_set_ride_mode(esc_ride_mode_t mode);
 esp_err_t esc_cycleiq_set_walk(bool enabled);
+esp_err_t esc_cycleiq_set_controller_enabled(bool enabled);
 
 #endif

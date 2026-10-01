@@ -48,7 +48,13 @@ void i2c_master_init() {
 }
 
 static void handle_button_power_long(void) {
-  ESP_LOGI(TAG, "POWER long press: entering deep sleep");
+  ESP_LOGI(TAG, "POWER long press: disabling controller and sleeping display");
+  if (s_esc_ready) {
+    esp_err_t ret = esc_set_controller_enabled(false);
+    if (ret != ESP_OK) {
+      ESP_LOGW(TAG, "failed to disable controller: %s", esp_err_to_name(ret));
+    }
+  }
   display_sleep();
 }
 
@@ -114,6 +120,10 @@ static void peak_app_task(void *arg) {
     ESP_LOGE(TAG, "ESC initialization failed: %s", esp_err_to_name(esc_ret));
   } else {
     s_esc_ready = true;
+    esp_err_t ret = esc_set_controller_enabled(true);
+    if (ret != ESP_OK) {
+      ESP_LOGW(TAG, "failed to enable controller: %s", esp_err_to_name(ret));
+    }
     if (s_mountain_requested) {
       handle_boot_mountain_mode();
     }

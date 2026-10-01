@@ -60,6 +60,9 @@ static void copy_field(esc_state_t *target, const esc_state_t *source,
   case ESC_STATE_WALK:
     target->walk_active = source->walk_active;
     break;
+  case ESC_STATE_CONTROLLER_ENABLED:
+    target->controller_enabled = source->controller_enabled;
+    break;
   case ESC_STATE_SPEED:
     target->speed_kph = source->speed_kph;
     break;
@@ -97,6 +100,7 @@ void esc_publish_state(const esc_state_t *update) {
   copy_field(&s_state, update, ESC_STATE_SUPPORT_MODE);
   copy_field(&s_state, update, ESC_STATE_RIDE_MODE);
   copy_field(&s_state, update, ESC_STATE_WALK);
+  copy_field(&s_state, update, ESC_STATE_CONTROLLER_ENABLED);
   copy_field(&s_state, update, ESC_STATE_SPEED);
   copy_field(&s_state, update, ESC_STATE_POWER);
   copy_field(&s_state, update, ESC_STATE_MOTOR_TEMP);
@@ -196,5 +200,14 @@ esp_err_t esc_set_walk(bool enabled) {
   return esc_kt_set_walk(enabled);
 #else
   return esc_cycleiq_set_walk(enabled);
+#endif
+}
+
+esp_err_t esc_set_controller_enabled(bool enabled) {
+#if CONFIG_PEAK_ESC_BACKEND_KT
+  (void)enabled;
+  return ESP_ERR_NOT_SUPPORTED;
+#else
+  return esc_cycleiq_set_controller_enabled(enabled);
 #endif
 }

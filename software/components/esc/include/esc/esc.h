@@ -26,6 +26,7 @@ enum {
   ESC_STATE_CONTROLLER_TEMP = 1u << 7,
   ESC_STATE_BATTERY_PERCENT = 1u << 8,
   ESC_STATE_BATTERY_VOLTAGE = 1u << 9,
+  ESC_STATE_CONTROLLER_ENABLED = 1u << 10,
 };
 
 typedef struct {
@@ -34,6 +35,7 @@ typedef struct {
   esc_support_mode_t support_mode;
   esc_ride_mode_t ride_mode;
   bool walk_active;
+  bool controller_enabled;
   float speed_kph;
   int16_t power_w;
   int8_t motor_temp_c;
@@ -53,5 +55,6 @@ esp_err_t esc_gear_down(void);
 esp_err_t esc_set_support_mode(esc_support_mode_t mode);
 esp_err_t esc_set_ride_mode(esc_ride_mode_t mode);
 esp_err_t esc_set_walk(bool enabled);
+esp_err_t esc_set_controller_enabled(bool enabled);
 
 #endif

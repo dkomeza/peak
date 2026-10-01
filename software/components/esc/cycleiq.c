@@ -36,13 +36,14 @@ static void handle_frame(uint32_t id, const uint8_t *data, uint8_t len,
     cycleiq_support_mode_t support_mode;
     cycleiq_ride_mode_t ride_mode;
     if (!cycleiq_read_state(&frame, &update.gear, &support_mode, &ride_mode,
-                            &update.walk_active)) {
+                            &update.walk_active, &update.controller_enabled)) {
       return;
     }
     update.support_mode = (esc_support_mode_t)support_mode;
     update.ride_mode = (esc_ride_mode_t)ride_mode;
     update.valid_fields = ESC_STATE_GEAR | ESC_STATE_SUPPORT_MODE |
-                          ESC_STATE_RIDE_MODE | ESC_STATE_WALK;
+                          ESC_STATE_RIDE_MODE | ESC_STATE_WALK |
+                          ESC_STATE_CONTROLLER_ENABLED;
     break;
   }
   case CYCLEIQ_TELEMETRY_LIVE: {
@@ -131,4 +132,9 @@ esp_err_t esc_cycleiq_set_ride_mode(esc_ride_mode_t mode) {
 esp_err_t esc_cycleiq_set_walk(bool enabled) {
   cycleiq_frame_t frame;
   return send_frame(cycleiq_set_walk(&frame, enabled), &frame);
+}
+
+esp_err_t esc_cycleiq_set_controller_enabled(bool enabled) {
+  cycleiq_frame_t frame;
+  return send_frame(cycleiq_set_controller_enabled(&frame, enabled), &frame);
 }
